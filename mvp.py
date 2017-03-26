@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 from collections import deque
 
+try:
+    import yaml
+except ImportError as err:
+    pass
+
 
 class LayeredConfig:
     """Presenter"""
@@ -179,22 +184,28 @@ class DictSource(Source):
     def _write(self, data):
         self._data = data
 
+
 class YamlFile(Source):
     """Source for yaml files"""
 
-    import yaml
 
     def __init__(self, source):
+        try:
+            assert yaml
+        except NameError:
+            msg = 'You are missing the optional dependency "pyyaml"'
+            raise ImportError(msg)
+
         super(YamlFile, self).__init__()
         self._source = source
 
     def _read(self):
         with open(self._source) as fh:
-            return self.yaml.load(fh)
+            return yaml.load(fh)
 
     def _write(self, data):
         with open(self._source, 'w') as fh:
-            self.yaml.dump(data, fh)
+            yaml.dump(data, fh)
 
 
 class JsonFile(Source):
@@ -248,6 +259,7 @@ class INIFile(Source):
         return data
 
     # def _write(self, data):
+        # import ipdb; ipdb.set_trace()
         # return
         # with open(self._source, 'w') as fh:
             # self.json.dump(data, fh)

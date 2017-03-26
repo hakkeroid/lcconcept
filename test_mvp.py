@@ -4,61 +4,10 @@ import io
 import collections
 import copy
 import json
-import yaml
 import functools
 
 import pytest
 import mvp
-
-def unindent(text):
-    return '\n'.join([line.lstrip() for line in text.split('\n')])
-
-
-def test_ini_source():
-    inifile = io.StringIO(unindent(u"""
-        [__root__]
-        a=1
-
-        [b]
-        c=2
-
-        [b.d]
-        e=%(interpolated)s
-        interpolated=3
-
-        [b/d/f]
-        g=4
-    """))
-
-    config = mvp.INIFile(inifile)
-    assert config.a == '1'
-    assert config.b.c == '2'
-    assert config['b.d'].e == '3'
-    assert config['b/d/f'].g == '4'
-
-
-def test_ini_source_subsections():
-    inifile = io.StringIO(unindent(u"""
-        [__root__]
-        a=1
-
-        [b]
-        c=2
-
-        [b.d]
-        e=%(interpolated)s
-        interpolated=3
-
-        [b/d/f]
-        g=4
-    """))
-
-    config = mvp.INIFile(inifile, subsection_token='.')
-    assert config.a == '1'
-    assert config.b.c == '2'
-    assert config.b.d.e == '3'
-    assert config['b/d/f'].g == '4'
-
 
 @pytest.fixture
 def defaults():
@@ -80,17 +29,6 @@ def defaults():
             'unique': True
         }
     }
-
-
-def test_layered():
-    config = mvp.LayeredConfig(
-        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.DictSource({'x': 6, 'b': { 'y': 7}})
-    )
-
-    assert config.a == 1
-    assert config.b.c == 2
-    assert config.b.y == 7
 
 
 @pytest.mark.xfail
@@ -150,6 +88,19 @@ class DAL(object):
         self._write_data(self, data)
 
 
+def call_count(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        wrapper.calls += 1
+        return fn(*args, **kwargs)
+    wrapper.calls = 0
+    return wrapper
+
+
+def unindent(text):
+    return '\n'.join([line.lstrip() for line in text.split('\n')])
+
+
 @pytest.fixture
 def data():
     return {
@@ -180,6 +131,8 @@ def json_file(tmpdir, data):
 
 @pytest.fixture
 def yaml_file(tmpdir, data):
+    import yaml
+
     path = tmpdir / 'config.yml'
 
     def loader(self):
@@ -222,16 +175,7 @@ def etcd_store(request):
                         params={'recursive': True})
 
 
-def call_count(fn):
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        wrapper.calls += 1
-        return fn(*args, **kwargs)
-    wrapper.calls = 0
-    return wrapper
-
-
-def test_etc(etcd_store, data):
+def test_etcd_connector(etcd_store, data):
     etcd = mvp.EtcdConnector(etcd_store.url)
     expected = {
         'a': '1',
@@ -251,6 +195,17 @@ def test_etc(etcd_store, data):
 
     etcd.flush()
     assert not etcd.get()
+
+
+def test_layered_config():
+    config = mvp.LayeredConfig(
+        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
+        mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    )
+
+    assert config.a == 1
+    assert config.b.c == 2
+    assert config.b.y == 7
 
 
 def test_lazy_read_dict_source():
@@ -339,6 +294,52 @@ def test_lazy_read_yaml_source(yaml_file):
     assert after == 20
 
 
+def test_ini_source():
+    inifile = io.StringIO(unindent(u"""
+        [__root__]
+        a=1
+
+        [b]
+        c=2
+
+        [b.d]
+        e=%(interpolated)s
+        interpolated=3
+
+        [b/d/f]
+        g=4
+    """))
+
+    config = mvp.INIFile(inifile)
+    assert config.a == '1'
+    assert config.b.c == '2'
+    assert config['b.d'].e == '3'
+    assert config['b/d/f'].g == '4'
+
+
+def test_ini_source_subsections():
+    inifile = io.StringIO(unindent(u"""
+        [__root__]
+        a=1
+
+        [b]
+        c=2
+
+        [b.d]
+        e=%(interpolated)s
+        interpolated=3
+
+        [b/d/f]
+        g=4
+    """))
+
+    config = mvp.INIFile(inifile, subsection_token='.')
+    assert config.a == '1'
+    assert config.b.c == '2'
+    assert config.b.d.e == '3'
+    assert config['b/d/f'].g == '4'
+
+
 def test_lazy_read_etcd_source(etcd_store):
     config = mvp.EtcdStore(etcd_store.url)
     config._connector._request = call_count(config._connector._request)
@@ -389,8 +390,7 @@ def test_write_yaml_source(yaml_file):
     config.b.c = 20
     config.b.d.e = 30
 
-    result = yaml.load(yaml_file.path.read())
-    assert result == expected
+    assert yaml_file.data == expected
 
 
 def test_write_etcd_source(etcd_store):

@@ -37,6 +37,18 @@ class LayeredConfig:
 
 
 class SourceMeta(type):
+
+    def __new__(self, name, bases, dct):
+        if not '_read' in dct:
+            msg = '%s is missing to the required "_read" method' % name
+            raise NotImplementedError(msg)
+        if name != 'Source':
+            dct['_source_name'] = name
+
+        dct['_readonly'] = '_write' not in dct
+
+        return super(SourceMeta, self).__new__(self, name, bases, dct)
+
     def __call__(cls, *args, **kwargs):
         instance = super(SourceMeta, cls).__call__(*args, **kwargs)
         instance._initialized = True
@@ -51,6 +63,13 @@ class Source(object):
 
     def __init__(self, **kwargs):
         self._root = kwargs.pop('root', None)
+
+        # kwargs.get would override the metaclass settings
+        # so only change if it's really given.
+        if 'readonly' in kwargs:
+            self._readonly = kwargs['readonly']
+        if 'source_name' in kwargs:
+            self._source_name = kwargs['source_name']
 
     def get(self, name, default=None):
         try:
@@ -86,6 +105,18 @@ class Source(object):
         except AttributeError:
             pass
 
+    def _read(self):
+        return self._root[0]._read()[self._root[1]]
+
+    def _write(self, data):
+        if self._readonly:
+            raise TypeError('%s is not writable' % self._source_name)
+
+        result = self._root[0]._read()
+        result[self._root[1]] = data
+
+        self._root[0]._write(result)
+
     def __getattr__(self, name):
         # although the key was accessed with attribute style
         # lets keep raising a KeyError to distinguish between
@@ -98,7 +129,9 @@ class Source(object):
     def __getitem__(self, key):
         attr = self._read()[key]
         if isinstance(attr, dict):
-            return Source(root=(self, key))
+            return Source(root=(self, key),
+                          readonly=self._readonly,
+                          source_name=self._source_name)
         return attr
 
     def __setitem__(self, key, value):
@@ -125,15 +158,6 @@ class Source(object):
 
     def __iter__(self):
         return iter(self._read().keys())
-
-    def _read(self):
-        return self._root[0]._read()[self._root[1]]
-
-    def _write(self, data):
-        result = self._root[0]._read()
-        result[self._root[1]] = data
-
-        self._root[0]._write(result)
 
     def __eq__(self, other):
         return self._read() == other
@@ -223,10 +247,10 @@ class INIFile(Source):
                 data[section] = subtree
         return data
 
-    def _write(self, data):
-        return
-        with open(self._source, 'w') as fh:
-            self.json.dump(data, fh)
+    # def _write(self, data):
+        # return
+        # with open(self._source, 'w') as fh:
+            # self.json.dump(data, fh)
 
 
 class EtcdStore(Source):

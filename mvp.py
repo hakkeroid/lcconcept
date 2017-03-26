@@ -27,7 +27,7 @@ class LayeredConfig:
             except KeyError:
                 continue
 
-            if issubclass(type(value), Source):
+            if isinstance(value, Source):
                 # remember subtree for the next level of iteration
                 subqueue.append(source)
             else:
@@ -46,13 +46,50 @@ class SourceMeta(type):
 class Source(object):
     """Source object"""
 
-    _initialized = False
     __metaclass__ = SourceMeta
+    _initialized = False
 
     def __init__(self, **kwargs):
         self._root = kwargs.pop('root', None)
 
+    def get(self, name, default=None):
+        try:
+            return self[name]
+        except KeyError:
+            return default
+
+    def setdefault(self, name, value):
+        try:
+            return self[name]
+        except KeyError:
+            self[name] = value
+            return value
+
+    def items(self):
+        return self._read().items()
+
+    def update(self, *others):
+        data = self._read()
+        for other in others:
+            if isinstance(other, Source):
+                data.update(other.dump())
+            else:
+                data.update(other)
+        self._write(data)
+
+    def dump(self):
+        return self._read()
+
+    def save(self):
+        try:
+            self._root[0].save()
+        except AttributeError:
+            pass
+
     def __getattr__(self, name):
+        # although the key was accessed with attribute style
+        # lets keep raising a KeyError to distinguish between
+        # internal and user data.
         return self[name]
 
     def __setattr__(self, attr, value):
@@ -104,12 +141,6 @@ class Source(object):
     def __repr__(self):
         return repr(self._read())
 
-    def save(self):
-        try:
-            self._root[0].save()
-        except AttributeError:
-            pass
-
 
 class DictSource(Source):
     """Simple memory key-value source"""
@@ -156,6 +187,44 @@ class JsonFile(Source):
             return self.json.load(fh)
 
     def _write(self, data):
+        with open(self._source, 'w') as fh:
+            self.json.dump(data, fh)
+
+
+class INIFile(Source):
+    """Source for json files"""
+
+    try:
+        import configparser
+    except ImportError:
+        import ConfigParser as configparser
+
+    def __init__(self, source, subsection_token=None):
+        super(INIFile, self).__init__()
+        self._source = source
+        self._parser = self.configparser.ConfigParser()
+        self._parser.readfp(source)
+        self._token = subsection_token
+
+    def _read(self):
+        data = {}
+        for section in self._parser.sections():
+            subtree = dict(self._parser.items(section))
+            if section == '__root__':
+                data.update(subtree)
+            elif self._token and self._token in section:
+                subheaders = section.split('.')
+                last = subheaders.pop()
+                subdata = data
+                for header in subheaders:
+                    subdata = subdata.setdefault(header, {})
+                subdata[last] = subtree
+            else:
+                data[section] = subtree
+        return data
+
+    def _write(self, data):
+        return
         with open(self._source, 'w') as fh:
             self.json.dump(data, fh)
 

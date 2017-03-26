@@ -14,18 +14,50 @@ def unindent(text):
     return '\n'.join([line.lstrip() for line in text.split('\n')])
 
 
-def _test():
-    inifile = io.StringIO(unindent("""
+def test_ini_source():
+    inifile = io.StringIO(unindent(u"""
         [__root__]
-        force=True
-        home=/some/path
-        other=test
+        a=1
 
-        [mymodule]
-        more=stuff
+        [b]
+        c=2
+
+        [b.d]
+        e=%(interpolated)s
+        interpolated=3
+
+        [b/d/f]
+        g=4
     """))
 
-    assert mvp.INISource(inifile)
+    config = mvp.INIFile(inifile)
+    assert config.a == '1'
+    assert config.b.c == '2'
+    assert config['b.d'].e == '3'
+    assert config['b/d/f'].g == '4'
+
+
+def test_ini_source_subsections():
+    inifile = io.StringIO(unindent(u"""
+        [__root__]
+        a=1
+
+        [b]
+        c=2
+
+        [b.d]
+        e=%(interpolated)s
+        interpolated=3
+
+        [b/d/f]
+        g=4
+    """))
+
+    config = mvp.INIFile(inifile, subsection_token='.')
+    assert config.a == '1'
+    assert config.b.c == '2'
+    assert config.b.d.e == '3'
+    assert config['b/d/f'].g == '4'
 
 
 @pytest.fixture
@@ -104,12 +136,10 @@ def test_write(defaults):
     config.write()
 
 
-class TestFile(object):
+class DAL(object):
 
-    def __init__(self, path, loader, writer):
-        self.path = path
-        self._load_data = loader
-        self._write_data = writer
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
 
     @property
     def data(self):
@@ -135,48 +165,60 @@ def data():
 
 @pytest.fixture
 def json_file(tmpdir, data):
-    def _load_data(self):
+    path = tmpdir / 'config.json'
+
+    def loader(self):
         return json.loads(self.path.read())
 
-    def _write_data(self, data):
+    def writer(self, data):
         self.path.write(json.dumps(data))
 
-    test_file = TestFile(tmpdir / 'config.json', _load_data, _write_data)
+    test_file = DAL(path=path, _load_data=loader, _write_data=writer)
     test_file.data = data
     return test_file
 
 
 @pytest.fixture
 def yaml_file(tmpdir, data):
-    def _load_data(self):
+    path = tmpdir / 'config.yml'
+
+    def loader(self):
         return yaml.load(self.path.read())
 
-    def _write_data(self, data):
+    def writer(self, data):
         self.path.write(yaml.dump(data))
 
-    test_file = TestFile(tmpdir / 'config.yml', _load_data, _write_data)
+    test_file = DAL(path=path, _load_data=loader, _write_data=writer)
     test_file.data = data
     return test_file
 
 
-@pytest.yield_fixture
-def etcd_store():
+@pytest.fixture(params=[{
+    'a': 1,
+    'b/c': 2,
+    'b/d/e': 3,
+}])
+def etcd_store(request):
     import requests
-    data = {
-        'a': 1,
-        'b/c': 2,
-        'b/d/e': 3,
-    }
+    url = "http://127.0.0.1:2379/v2"
 
-    root_url = "http://127.0.0.1:2379/v2"
-    for key, value in data.items():
-        requests.put('/'.join([root_url, 'keys', key]),
-                     data={'value': value})
+    def loader(self):
+        result = requests.get(self.url + '/keys',
+                              params={'recursive': True,
+                                      'sorted': True})
+        return result.json()['node']
 
-    yield data, root_url
+    def writer(self, data):
+        for key, value in data.items():
+            requests.put('/'.join([self.url, 'keys', key]),
+                         data={'value': value})
+
+    test_store = DAL(url=url, _load_data=loader, _write_data=writer)
+    test_store.data = request.param
+    yield test_store
 
     for key in ['a', 'b']:
-        requests.delete('/'.join([root_url, 'keys', key]),
+        requests.delete('/'.join([url, 'keys', key]),
                         params={'recursive': True})
 
 
@@ -190,7 +232,7 @@ def call_count(fn):
 
 
 def test_etc(etcd_store, data):
-    etcd = mvp.EtcdConnector(etcd_store[1])
+    etcd = mvp.EtcdConnector(etcd_store.url)
     expected = {
         'a': '1',
         'b': {
@@ -218,6 +260,45 @@ def test_lazy_read_dict_source():
     assert config.a == 1
     assert config.b.c == 2
     assert config.b.d == {'e': 3}
+
+
+def test_source_get():
+    config = mvp.DictSource({'a': 1})
+
+    assert config.get('a') == 1
+    assert config.get('nonexisting') is None
+    assert config.get('nonexisting', 'default') == 'default'
+
+
+def test_source_setdefault():
+    config = mvp.DictSource({'a': 1})
+
+    assert config.setdefault('a', 10) == 1
+    assert config.setdefault('nonexisting', 10) == 10
+    assert config.nonexisting == 10
+
+
+@pytest.mark.parametrize('container', [
+    dict, mvp.DictSource
+])
+def test_source_update(container):
+    source = {'a': {'b': 1}}
+    config = mvp.DictSource(source)
+
+    data1 = {'x': 4}
+    data2 = container({'y': 5})
+    expected = {'a': {'b': 1, 'x': 4, 'y': 5}}
+
+    config.a.update(data1, data2)
+
+    assert config == expected
+
+
+def test_source_items():
+    data = {'a': {'b': 1}}
+    config = mvp.DictSource(data)
+
+    assert config.a.items() == [('b', 1)]
 
 
 def test_lazy_read_json_source(json_file):
@@ -259,7 +340,7 @@ def test_lazy_read_yaml_source(yaml_file):
 
 
 def test_lazy_read_etcd_source(etcd_store):
-    config = mvp.EtcdStore(etcd_store[1])
+    config = mvp.EtcdStore(etcd_store.url)
     config._connector._request = call_count(config._connector._request)
 
     # etc is untyped
@@ -313,10 +394,10 @@ def test_write_yaml_source(yaml_file):
 
 
 def test_write_etcd_source(etcd_store):
-    config = mvp.EtcdStore(etcd_store[1])
+    config = mvp.EtcdStore(etcd_store.url)
     config._connector._request = call_count(config._connector._request)
 
-    expected = etcd_store[0]
+    expected = etcd_store.data
     expected['a'] = 10
     expected['b/c'] = 20
     expected['b/d/e'] = 30
@@ -328,7 +409,9 @@ def test_write_etcd_source(etcd_store):
     config.a = '10'
     config.b.c = '20'
     config.b.d.e = '30'
+    config.save()
 
-    return
-    result = requests.get(etcd_store[1]).json()
-    assert result == expected
+    data = etcd_store.data
+    assert data['nodes'][0]['value'] == '10'
+    assert data['nodes'][1]['nodes'][0]['value'] == '20'
+    assert data['nodes'][1]['nodes'][1]['nodes'][0]['value'] == '30'

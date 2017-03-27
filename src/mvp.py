@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 from collections import deque
+try:
+    import urlparse
+except ImportError:
+    # py>3
+    import urllib.parse as urlparse
 
 import six
 
+# optional dependencies
 try:
     import yaml
 except ImportError as err:
@@ -277,16 +283,52 @@ class EtcdStore(Source):
         self._cache = None
         self._use_cache = use_cache
 
+    def save(self):
+        items = self._translate_dict_to_key_value_pairs(self._cache)
+        self._connector.set(*items)
+
     def _read(self):
-        if not self._use_cache or not self._cache:
-            self._cache = self._connector.get()
+        if self._use_cache is False or not self._cache:
+            # getting a single value is broken
+            response = self._connector.get('/', recursive=True)
+            payload = self._get_payload_from_response(response)
+            self._cache = self._translate_payload_to_dict(payload)
         return self._cache
 
     def _write(self, data):
         self._cache = data
 
-    def save(self):
-        self._connector.set(self._cache)
+    def _translate_dict_to_key_value_pairs(self, data, root=None):
+        for key, value in data.items():
+            if isinstance(value, dict):
+                key_parts = filter(None, [root, key])
+                items = self._translate_dict_to_key_value_pairs(value, '/'.join(key_parts))
+                for item in items:
+                    yield item
+            else:
+                key_parts = filter(None, [root, key])
+                yield '/' + '/'.join(key_parts), value
+
+    def _get_payload_from_response(self, response):
+        try:
+            return response['node']['nodes']
+        except KeyError:
+            return {}
+        return self._convert_payload(payload, root=path)
+
+    def _translate_payload_to_dict(self, nodes, root=None):
+        root = root or '/'
+        result = {}
+
+        for node in nodes:
+            if node.get('dir', False):
+                key = node.get('key', root)
+                nodes = node.get('nodes', [])
+                result[key.lstrip(root)] = self._translate_payload_to_dict(nodes, key)
+            else:
+                key = node['key']
+                result[key.lstrip(root)] = node['value']
+        return result
 
 
 class EtcdConnector:
@@ -297,57 +339,28 @@ class EtcdConnector:
     def __init__(self, url):
         self.url = url + '/keys'
 
-    def set(self, data, root=None):
-        for key, value in data.items():
-            if isinstance(value, dict):
-                key_parts = filter(None, [root, key])
-                self.set(value, '/'.join(key_parts))
-            else:
-                key_parts = filter(None, [root, key])
-                self._send('/'.join(key_parts), value)
-
-    def get(self, path='/'):
-        response = self._request(path, recursive=True)
-        try:
-            payload = response['node']['nodes']
-        except KeyError:
-            return {}
-        return self._convert_payload(payload, root=path)
-
-    def flush(self):
-        response = self._request('/')
-        try:
-            payload = response['node']['nodes']
-        except KeyError:
-            return
-
-        for node in payload:
-            key = node['key'].lstrip('/')
-            self.requests.delete('/'.join([self.url, key]),
-                                 params={'recursive': True})
-
-    def _convert_payload(self, nodes, root=None):
-        root = root or '/'
-        result = {}
-
-        for node in nodes:
-            if node.get('dir', False):
-                key = node.get('key', root)
-                nodes = node.get('nodes', [])
-                result[key.lstrip(root)] = self._convert_payload(nodes, key)
-            else:
-                key = node['key']
-                result[key.lstrip(root)] = node['value']
-        return result
-
-    def _request(self, path, recursive=False):
-        # getting a single value is broken
+    def get(self, path, recursive=False):
         params = {'recursive': recursive}
-        url = '/'.join([self.url, path])
-        url.replace('//', '/')
+        url = self._make_url(self.url, path)
         response = self.requests.get(url, params=params)
         return response.json()
 
-    def _send(self, key, value):
-        self.requests.put('/'.join([self.url, key]),
-                          data={'value': value})
+    def set(self, *items):
+        for key, value in items:
+            url = self._make_url(self.url, key)
+            self.requests.put(url, data={'value': value})
+
+    def _make_url(self, *path_parts):
+        full_url = '/'.join(path_parts)
+        # not converting url_parts into a list leaves
+        # us with a namedtuple which cannot be modified
+        url_parts = list(urlparse.urlsplit(full_url))
+        url_parts[2] = self._normalize_path(url_parts[2])
+        return urlparse.urlunsplit(url_parts)
+
+    def _normalize_path(self, path):
+        parts = path.split('/')
+        start, middle, end = parts[0], parts[1:-1], parts[-1]
+        return '/'.join([start] + 
+                        [part for part in middle if part] + 
+                        [end])

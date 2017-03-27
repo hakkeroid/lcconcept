@@ -36,12 +36,16 @@ class DAL(object):
 
 
 @pytest.helpers.register
-def call_count(fn):
+def inspector(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         wrapper.calls += 1
+        #wrapper.args = args
+        #wrapper.kwargs = kwargs
         return fn(*args, **kwargs)
     wrapper.calls = 0
+    wrapper.args = None
+    wrapper.kwargs = None
     return wrapper
 
 

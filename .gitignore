@@ -1,4 +1,6 @@
+*.swp
 dist
 .cache
 .tox
 **/*.egg-info
+__pycache__

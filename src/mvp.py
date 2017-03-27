@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from collections import deque
 
+import six
+
 try:
     import yaml
 except ImportError as err:
@@ -60,10 +62,10 @@ class SourceMeta(type):
         return instance
 
 
+@six.add_metaclass(SourceMeta)
 class Source(object):
     """Source object"""
 
-    __metaclass__ = SourceMeta
     _initialized = False
 
     def __init__(self, **kwargs):
@@ -90,7 +92,7 @@ class Source(object):
             return value
 
     def items(self):
-        return self._read().items()
+        return six.iteritems(self._read())
 
     def update(self, *others):
         data = self._read()
@@ -248,14 +250,14 @@ class INIFile(Source):
             if section == '__root__':
                 data.update(subtree)
             elif self._token and self._token in section:
-                subheaders = section.split('.')
+                subheaders = section.split(self._token)
                 last = subheaders.pop()
                 subdata = data
                 for header in subheaders:
                     subdata = subdata.setdefault(header, {})
                 subdata[last] = subtree
             else:
-                data[section] = subtree
+                data.setdefault(section, {}).update(subtree)
         return data
 
     # def _write(self, data):

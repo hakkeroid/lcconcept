@@ -28,8 +28,10 @@ class LayeredConfig:
         queue = deque(self._sources)
         subqueue = deque()
 
+        untyped_value = None
+
         while queue:
-            source = queue.popleft()
+            source = queue.pop()
             subsource = self._get_subsource_from_keychain(source)
 
             # lookup key and skip this source if not found
@@ -42,17 +44,33 @@ class LayeredConfig:
                 # remember subtree for the next level of iteration.
                 # however we pass over the source itself to the subconfig.
                 # that way we keep full control over sources on sublevels.
-                subqueue.append(source)
+                subqueue.appendleft(source)
             else:
-                return value
+                if subsource.is_typed():
+                    if untyped_value:
+                        type_info = self._get_value_type_info(value)
+                        return self._convert_value_type(untyped_value, type_info)
+                    else:
+                        return value
+                else:
+                    untyped_value = value
 
-        return LayeredConfig(*subqueue, keychain=self._keychain+[name])
+        if subqueue:
+            return LayeredConfig(*subqueue, keychain=self._keychain+[name])
+        elif untyped_value is not None:
+            return untyped_value
 
     def _get_subsource_from_keychain(self, source):
         traversed_source = source
         for key in self._keychain:
             traversed_source = traversed_source[key]
         return traversed_source
+
+    def _get_value_type_info(self, value):
+        return type(value)
+
+    def _convert_value_type(self, value, type_info):
+        return type_info(value)
 
 
 class SourceMeta(type):
@@ -65,6 +83,7 @@ class SourceMeta(type):
             dct['_source_name'] = name
 
         dct['_readonly'] = '_write' not in dct
+        dct['_is_typed'] = dct.get('_is_typed', True)
 
         return super(SourceMeta, self).__new__(self, name, bases, dct)
 
@@ -91,6 +110,8 @@ class Source(object):
             self._readonly = kwargs['readonly']
         if 'source_name' in kwargs:
             self._source_name = kwargs['source_name']
+        if 'is_typed' in kwargs:
+            self._is_typed = kwargs['is_typed']
 
     def get(self, name, default=None):
         try:
@@ -126,6 +147,9 @@ class Source(object):
         except AttributeError:
             pass
 
+    def is_typed(self):
+        return self._is_typed
+
     def _read(self):
         return self._parent._read()[self._parent_key]
 
@@ -152,7 +176,9 @@ class Source(object):
         if isinstance(attr, dict):
             return Source(parent=(self, key),
                           readonly=self._readonly,
-                          source_name=self._source_name)
+                          source_name=self._source_name,
+                          is_typed=self._is_typed
+                          )
         return attr
 
     def __setitem__(self, key, value):
@@ -249,6 +275,8 @@ class INIFile(Source):
         import configparser
     except ImportError:
         import ConfigParser as configparser
+
+    _is_typed = False
 
     def __init__(self, source, subsection_token=None):
         super(INIFile, self).__init__()

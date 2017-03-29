@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from collections import deque, namedtuple
+import os
 try:
     import urlparse
 except ImportError:
@@ -225,6 +226,33 @@ class DictSource(Source):
 
     def _write(self, data):
         self._data = data
+
+
+class Environment(Source):
+    """Reads environment variables"""
+
+    def __init__(self, prefix=None):
+        super(Environment, self).__init__()
+        self.prefix = prefix
+        self.token = '_'
+
+    def _read(self):
+        data = {}
+        for key, value in os.environ.items():
+            if not key.startswith(self.prefix):
+                continue
+
+            subheaders = key.lower().split(self.token)[1:]
+            subdata = data
+            last = subheaders.pop()
+            for header in subheaders:
+                subdata = subdata.setdefault(header, {})
+            subdata[last] = value
+
+        return data
+
+    #def _write(self, data):
+        #self._data = data
 
 
 class YamlFile(Source):

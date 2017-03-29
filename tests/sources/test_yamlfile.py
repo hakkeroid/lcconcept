@@ -6,13 +6,10 @@ import mvp
 
 try:
     import yaml
-    installed = True
 except:
-    installed = False
+    # skip all tests when yaml is not installed
+    pytestmark = pytest.mark.skip(reason='Missing optional dependencies')
 
-
-# skip all tests when yaml is not installed
-pytestmark = pytest.mark.skipif(not installed, reason='Missing optional dependencies')
 
 @pytest.fixture
 def yaml_file(tmpdir, data):

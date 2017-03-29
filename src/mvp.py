@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from collections import deque
+from collections import deque, namedtuple
 try:
     import urlparse
 except ImportError:
@@ -20,7 +20,9 @@ class LayeredConfig:
 
     def __init__(self, *sources, **kwargs):
         self._sources = sources
-        self._root = kwargs.get('root', [])
+        # _keychain is a list of keys that led from the root
+        # config to this subconfig
+        self._keychain = kwargs.get('keychain', [])
 
     def __getattr__(self, name):
         queue = deque(self._sources)
@@ -28,25 +30,29 @@ class LayeredConfig:
 
         while queue:
             source = queue.popleft()
-
-            # step down to key level
-            iter_source = source
-            for root in self._root:
-                iter_source = iter_source[root]
+            subsource = self._get_subsource_from_keychain(source)
 
             # lookup key and skip this source if not found
             try:
-                value = iter_source[name]
+                value = subsource[name]
             except KeyError:
                 continue
 
             if isinstance(value, Source):
-                # remember subtree for the next level of iteration
+                # remember subtree for the next level of iteration.
+                # however we pass over the source itself to the subconfig.
+                # that way we keep full control over sources on sublevels.
                 subqueue.append(source)
             else:
                 return value
 
-        return LayeredConfig(*subqueue, root=self._root+[name])
+        return LayeredConfig(*subqueue, keychain=self._keychain+[name])
+
+    def _get_subsource_from_keychain(self, source):
+        traversed_source = source
+        for key in self._keychain:
+            traversed_source = traversed_source[key]
+        return traversed_source
 
 
 class SourceMeta(type):
@@ -75,7 +81,9 @@ class Source(object):
     _initialized = False
 
     def __init__(self, **kwargs):
-        self._root = kwargs.pop('root', None)
+        # _parent is the parent object
+        # _parent_key is the key on the parent that led to this object
+        self._parent, self._parent_key = kwargs.pop('parent', (None, None))
 
         # kwargs.get would override the metaclass settings
         # so only change if it's really given.
@@ -114,21 +122,21 @@ class Source(object):
 
     def save(self):
         try:
-            self._root[0].save()
+            self._parent.save()
         except AttributeError:
             pass
 
     def _read(self):
-        return self._root[0]._read()[self._root[1]]
+        return self._parent._read()[self._parent_key]
 
     def _write(self, data):
         if self._readonly:
             raise TypeError('%s is not writable' % self._source_name)
 
-        result = self._root[0]._read()
-        result[self._root[1]] = data
+        result = self._parent._read()
+        result[self._parent_key] = data
 
-        self._root[0]._write(result)
+        self._parent._write(result)
 
     def __getattr__(self, name):
         # although the key was accessed with attribute style
@@ -142,7 +150,7 @@ class Source(object):
     def __getitem__(self, key):
         attr = self._read()[key]
         if isinstance(attr, dict):
-            return Source(root=(self, key),
+            return Source(parent=(self, key),
                           readonly=self._readonly,
                           source_name=self._source_name)
         return attr

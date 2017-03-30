@@ -53,7 +53,8 @@ class LayeredConfig:
                 continue
 
             if not subsource.is_typed():
-                untyped_value = value
+                if untyped_value is None:
+                    untyped_value = value
                 continue
 
             # reaching this point means the current source is typed and if

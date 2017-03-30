@@ -24,7 +24,11 @@ def test_layered_config():
 
 def test_layered_config_with_untyped_source():
     typed_source = {'a': 1, 'b': {'c': 2}}
-    untyped_source = io.StringIO(pytest.helpers.unindent(u"""
+    untyped_source1 = io.StringIO(pytest.helpers.unindent(u"""
+        [__root__]
+        a=11
+    """))
+    untyped_source2 = io.StringIO(pytest.helpers.unindent(u"""
         [__root__]
         a=10
 
@@ -35,19 +39,20 @@ def test_layered_config_with_untyped_source():
         e=30
     """))
     typed = mvp.DictSource(typed_source)
-    untyped = mvp.INIFile(untyped_source, subsection_token='.')
-    # add untyped twice to make ensure skipping all untyped sources when
-    # searching for typing information.
-    config = mvp.LayeredConfig(typed, untyped, untyped)
+    untyped1 = mvp.INIFile(untyped_source1)
+    untyped2 = mvp.INIFile(untyped_source2, subsection_token='.')
+    config = mvp.LayeredConfig(typed, untyped1, untyped2)
 
     assert typed.a == 1
     assert typed.b.c == 2
     with pytest.raises(KeyError):
         typed.b.d.e
 
-    assert untyped.a == '10'
-    assert untyped.b.c == '20'
-    assert untyped.b.d.e == '30'
+    assert untyped1.a == '11'
+
+    assert untyped2.a == '10'
+    assert untyped2.b.c == '20'
+    assert untyped2.b.d.e == '30'
 
     assert config.a == 10
     assert config.b.c == 20

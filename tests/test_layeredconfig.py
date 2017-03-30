@@ -8,6 +8,10 @@ import mvp
 
 
 def test_layered_config():
+    config = mvp.LayeredConfig()
+    with pytest.raises(KeyError):
+        assert config.a
+
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),
         mvp.DictSource({'x': 6, 'b': {'y': 7}})
@@ -18,7 +22,7 @@ def test_layered_config():
     assert config.b.y == 7
 
 
-def test_layered_config():
+def test_layered_config_with_untyped_source():
     typed_source = {'a': 1, 'b': {'c': 2}}
     untyped_source = io.StringIO(pytest.helpers.unindent(u"""
         [__root__]
@@ -32,7 +36,9 @@ def test_layered_config():
     """))
     typed = mvp.DictSource(typed_source)
     untyped = mvp.INIFile(untyped_source, subsection_token='.')
-    config = mvp.LayeredConfig(typed, untyped)
+    # add untyped twice to make ensure skipping all untyped sources when
+    # searching for typing information.
+    config = mvp.LayeredConfig(typed, untyped, untyped)
 
     assert typed.a == 1
     assert typed.b.c == 2

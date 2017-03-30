@@ -22,55 +22,73 @@ class LayeredConfig:
     def __init__(self, *sources, **kwargs):
         self._sources = sources
         # _keychain is a list of keys that led from the root
-        # config to this subconfig
+        # config to this (sub)config
         self._keychain = kwargs.get('keychain', [])
 
-    def __getattr__(self, name):
-        queue = deque(self._sources)
+    def __getattr__(self, key):
+        current_queue = deque(self._sources)
+
+        # gathers all sources which returned a sublevel source. they
+        # will then be used as input for a new sublevel config with the
+        # current key added to the keychain.
         subqueue = deque()
 
+        # in case the current source is untyped save the found value and
+        # keep searching the other sources for additional occurrences of
+        # the key to reuse its typing information. If we cannot find
+        # another source simply return the untyped value as is.
         untyped_value = None
 
-        while queue:
-            source = queue.pop()
-            subsource = self._get_subsource_from_keychain(source)
+        while current_queue:
+            source = current_queue.pop()
+            subsource = self._get_sublevel_source_from_keychain(source)
 
-            # lookup key and skip this source if not found
             try:
-                value = subsource[name]
+                value = subsource[key]
             except KeyError:
                 continue
 
             if isinstance(value, Source):
-                # remember subtree for the next level of iteration.
-                # however we pass over the source itself to the subconfig.
-                # that way we keep full control over sources on sublevels.
                 subqueue.appendleft(source)
-            else:
-                if subsource.is_typed():
-                    if untyped_value:
-                        type_info = self._get_value_type_info(value)
-                        return self._convert_value_type(untyped_value, type_info)
-                    else:
-                        return value
-                else:
-                    untyped_value = value
+                continue
 
+            if not subsource.is_typed():
+                untyped_value = value
+                continue
+
+            # reaching this point means the current source is typed and if
+            # untyped_value was never set before it also means this is the
+            # first occurrence of the key, so we can safely return it.
+            if untyped_value is None:
+                return value
+
+            # because untyped_value was set previously and the current
+            # source is typed we can stop searching and instead convert
+            # the untyped value
+            type_info = self._get_type_info(value)
+            return self._convert_value_to_type(untyped_value, type_info)
+
+        # in the while loop we always ended up in any of the continue
+        # statements which means either the key was not found or the key
+        # is a sublevel source or it is untyped.
         if subqueue:
-            return LayeredConfig(*subqueue, keychain=self._keychain+[name])
+            return LayeredConfig(*subqueue, keychain=self._keychain+[key])
         elif untyped_value is not None:
             return untyped_value
+        else:
+            raise KeyError("Key '%s' was not found" % key)
 
-    def _get_subsource_from_keychain(self, source):
+    def _get_sublevel_source_from_keychain(self, source):
+        """Return the sublevel of a source according to the keychain"""
         traversed_source = source
         for key in self._keychain:
             traversed_source = traversed_source[key]
         return traversed_source
 
-    def _get_value_type_info(self, value):
+    def _get_type_info(self, value):
         return type(value)
 
-    def _convert_value_type(self, value, type_info):
+    def _convert_value_to_type(self, value, type_info):
         return type_info(value)
 
 
@@ -316,18 +334,18 @@ class INIFile(Source):
     def _read(self):
         data = {}
         for section in self._parser.sections():
-            subtree = dict(self._parser.items(section))
+            sublevel = dict(self._parser.items(section))
             if section == '__root__':
-                data.update(subtree)
+                data.update(sublevel)
             elif self._token and self._token in section:
                 subheaders = section.split(self._token)
                 last = subheaders.pop()
                 subdata = data
                 for header in subheaders:
                     subdata = subdata.setdefault(header, {})
-                subdata[last] = subtree
+                subdata[last] = sublevel
             else:
-                data.setdefault(section, {}).update(subtree)
+                data.setdefault(section, {}).update(sublevel)
         return data
 
     # def _write(self, data):
@@ -425,6 +443,6 @@ class EtcdConnector:
     def _normalize_path(self, path):
         parts = path.split('/')
         start, middle, end = parts[0], parts[1:-1], parts[-1]
-        return '/'.join([start] + 
-                        [part for part in middle if part] + 
+        return '/'.join([start] +
+                        [part for part in middle if part] +
                         [end])

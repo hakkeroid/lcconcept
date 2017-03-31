@@ -236,8 +236,8 @@ class Source(object):
 class DictSource(Source):
     """Simple memory key-value source"""
 
-    def __init__(self, data=None):
-        super(DictSource, self).__init__()
+    def __init__(self, data=None, **kwargs):
+        super(DictSource, self).__init__(**kwargs)
         self._data = data or {}
 
     def _read(self):
@@ -250,10 +250,12 @@ class DictSource(Source):
 class Environment(Source):
     """Reads environment variables"""
 
-    def __init__(self, prefix=None):
-        super(Environment, self).__init__()
+    _is_typed = False
+
+    def __init__(self, prefix=None, token='_', **kwargs):
+        super(Environment, self).__init__(**kwargs)
         self.prefix = prefix
-        self.token = '_'
+        self.token = token
 
     def _read(self):
         data = {}
@@ -278,14 +280,14 @@ class YamlFile(Source):
     """Source for yaml files"""
 
 
-    def __init__(self, source):
+    def __init__(self, source, **kwargs):
         try:
             assert yaml
         except NameError:
             msg = 'You are missing the optional dependency "pyyaml"'
             raise ImportError(msg)
 
-        super(YamlFile, self).__init__()
+        super(YamlFile, self).__init__(**kwargs)
         self._source = source
 
     def _read(self):
@@ -302,8 +304,8 @@ class JsonFile(Source):
 
     import json
 
-    def __init__(self, source):
-        super(JsonFile, self).__init__()
+    def __init__(self, source, **kwargs):
+        super(JsonFile, self).__init__(**kwargs)
         self._source = source
 
     def _read(self):
@@ -325,8 +327,8 @@ class INIFile(Source):
 
     _is_typed = False
 
-    def __init__(self, source, subsection_token=None):
-        super(INIFile, self).__init__()
+    def __init__(self, source, subsection_token=None, **kwargs):
+        super(INIFile, self).__init__(**kwargs)
         self._source = source
         self._parser = self.configparser.ConfigParser()
         self._parser.readfp(source)
@@ -359,12 +361,14 @@ class INIFile(Source):
 class EtcdStore(Source):
     """Source for etcd stores"""
 
-    def __init__(self, baseurl="http://127.0.0.1:2379/v2", use_cache=True):
-        super(EtcdStore, self).__init__()
+    _DEFAULT_URL = "http://127.0.0.1:2379/v2"
 
-        self._connector = EtcdConnector(baseurl)
-        self._cache = None
+    def __init__(self, url, use_cache=True, **kwargs):
+        super(EtcdStore, self).__init__(**kwargs)
+
         self._use_cache = use_cache
+        self._connector = EtcdConnector(url or self._DEFAULT_URL)
+        self._cache = None
 
     def save(self):
         items = self._translate_dict_to_key_value_pairs(self._cache)

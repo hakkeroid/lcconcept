@@ -12,6 +12,7 @@ def test_raise_keyerrors_on_empty_multilayer_config():
     with pytest.raises(KeyError):
         assert config.a
 
+
 def test_properly_return_none_values():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': None})
@@ -23,7 +24,7 @@ def test_properly_return_none_values():
 def test_read_layered_sources():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.DictSource({'x': 6, 'b': {'y': 7}})
+        mvp.DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
     )
 
     assert config.a == 1
@@ -33,12 +34,39 @@ def test_read_layered_sources():
     assert config['a'] == 1
     assert config['b'].c == 2
     assert config.b['y'] == 7
+    assert config.b.d.e == 8
+
+
+def test_read_complex_layered_sources(monkeypatch):
+    monkeypatch.setenv('MVP1_A', 1000)
+    monkeypatch.setenv('MVP2_B_M_E', 4000)
+
+    config = mvp.LayeredConfig(
+        mvp.Environment('MVP1_'),  # untyped shadowing
+        mvp.DictSource({'a': 1, 'b': {'c': 2, 'e': 400}}),
+        mvp.DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}}),
+        mvp.DictSource({'a': 100, 'b': {'m': {'e': 800}}}),     # shadowing
+        mvp.DictSource({'x': 'x', 'b': {'y': 0.7, 'd': 800}}),  # type changing
+        mvp.Environment('MVP2_'),  # untyped shadowing
+    )
+
+    assert config.a == 100
+    assert config.x == 'x'       # changes int to str
+    assert config.b.c == 2
+    assert config.b.y == 0.7     # changes int to float
+    assert config.b.d == 800     # changes subsource (dict) to single value
+    assert config.b.e == 400     # 'e' should not be shadowed by other 'e'
+    assert config.b.m.e == 4000  # shadowed by untyped but casted to type
+
+    with pytest.raises(AttributeError) as exc_info:
+        config.b.d.e
+    assert "no attribute 'e'" in str(exc_info.value)
 
 
 def test_layered_len():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.DictSource({'x': 6, 'b': {'y': 7}})
+        mvp.DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
     )
 
     assert len(config) == 3
@@ -46,7 +74,7 @@ def test_layered_len():
 
 def test_write_layered_source():
     source1 = mvp.DictSource({'a': 1, 'b': {'c': 2}})
-    source2 = mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    source2 = mvp.DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
     config = mvp.LayeredConfig(source1, source2)
 
     assert config.a == 1
@@ -57,23 +85,26 @@ def test_write_layered_source():
     config['x'] = 60
     config['b'].c = 20
     config.b['y'] = 70
+    config.b.d.e = 80
 
     assert config.a == 10
     assert config.x == 60
     assert config.b.c == 20
     assert config.b.y == 70
+    assert config.b.d.e == 80
 
     assert source1.a == 10
     assert source1.b.c == 20
 
     assert source2.x == 60
     assert source2.b.y == 70
+    assert source2.b.d.e == 80
 
 
 def test_layered_get():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.DictSource({'x': 6, 'b': {'y': 7}})
+        mvp.DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
     )
 
     assert config.get('a') == 1
@@ -186,5 +217,3 @@ def test_layered_config_with_untyped_source():
     assert config.a == 10
     assert config.b.c == 20
     assert config.b.d.e == '30'
-
-    # assert config.dump()

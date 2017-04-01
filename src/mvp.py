@@ -22,12 +22,17 @@ class LayeredConfig(object):
     _initialized = False
 
     def __init__(self, *sources, **kwargs):
-        self._sources = sources
+        self._source_list = sources
 
         # _keychain is a list of keys that led from the root
         # config to this (sub)config
         self._keychain = kwargs.get('keychain', [])
         self._initialized = True
+
+    @property
+    def _sources(self):
+        for source in reversed(self._source_list):
+            yield source, self._get_sublevel_source_from_keychain(source)
 
     def get(self, name, default=None):
         try:
@@ -37,21 +42,16 @@ class LayeredConfig(object):
 
     def items(self):
         def _items():
-            current_queue = deque(self._sources)
-
             subqueues = defaultdict(deque)
 
             yielded = set()
 
-            while current_queue:
-                source = current_queue.pop()
-                subsource = self._get_sublevel_source_from_keychain(source)
-
-                for key, value in subsource.items():
+            for root_source, source in self._sources:
+                for key, value in source.items():
                     if isinstance(value, dict):
                         # identical keys that have dicts as values needs
                         # to be merged
-                        subqueues[key].appendleft(source)
+                        subqueues[key].appendleft(root_source)
                     else:
                         # all other identical keys will shadow
                         # subsequent keys
@@ -104,9 +104,6 @@ class LayeredConfig(object):
         return self[key]
 
     def __getitem__(self, key):
-        current_queue = deque(self._sources)
-
-        # gathers all sources which returned a sublevel source. they
         # will then be used as input for a new sublevel config with the
         # current key added to the keychain.
         subqueue = deque()
@@ -117,20 +114,17 @@ class LayeredConfig(object):
         # another source simply return the untyped value as is.
         untyped_value = None
 
-        while current_queue:
-            source = current_queue.pop()
-            subsource = self._get_sublevel_source_from_keychain(source)
-
+        for root_source, source in self._sources:
             try:
-                value = subsource[key]
+                value = source[key]
             except KeyError:
                 continue
 
             if isinstance(value, Source):
-                subqueue.appendleft(source)
+                subqueue.appendleft(root_source)
                 continue
 
-            if not subsource.is_typed():
+            if not source.is_typed():
                 if untyped_value is None:
                     untyped_value = value
                 continue
@@ -169,22 +163,17 @@ class LayeredConfig(object):
                 key in LayeredConfig.__dict__]):
             super(LayeredConfig, self).__setattr__(key, value)
         else:
-            current_queue = deque(self._sources)
-
             # will be used if the key could not be found in any source
             # which means that a new key/value shall be added to the
             # config.
             writable_source = None
 
-            while current_queue:
-                source = current_queue.pop()
-                subsource = self._get_sublevel_source_from_keychain(source)
+            for root_source, source in self._sources:
+                if writable_source is None and not root_source._readonly:
+                    writable_source = source
 
-                if writable_source is None and not subsource._readonly:
-                    writable_source = subsource
-
-                if key in subsource:
-                    subsource[key] = value
+                if key in source:
+                    source[key] = value
                     return
 
             # no source was found so write it to first writable source
@@ -200,15 +189,10 @@ class LayeredConfig(object):
         return len(list(iter(self)))
 
     def __iter__(self):
-        current_queue = deque(self._sources)
-
         yielded = set()
 
-        while current_queue:
-            source = current_queue.pop()
-            subsource = self._get_sublevel_source_from_keychain(source)
-
-            for key in subsource:
+        for root_source, source in self._sources:
+            for key in source:
                 if key not in yielded:
                     yielded.add(key)
                     yield key

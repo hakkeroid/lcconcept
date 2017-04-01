@@ -21,6 +21,7 @@ class LayeredConfig:
 
     def __init__(self, *sources, **kwargs):
         self._sources = sources
+
         # _keychain is a list of keys that led from the root
         # config to this (sub)config
         self._keychain = kwargs.get('keychain', [])
@@ -73,7 +74,9 @@ class LayeredConfig:
         # statements which means either the key was not found or the key
         # is a sublevel source or it is untyped.
         if subqueue:
-            return LayeredConfig(*subqueue, keychain=self._keychain+[key])
+            return LayeredConfig(*subqueue,
+                                 keychain=self._keychain+[key]
+                                 )
         elif untyped_value is not None:
             return untyped_value
         else:
@@ -113,6 +116,9 @@ class SourceMeta(type):
         return instance
 
 
+CustomType = namedtuple('CustomType', 'customize reset')
+
+
 @six.add_metaclass(SourceMeta)
 class Source(object):
     """Source object"""
@@ -132,6 +138,9 @@ class Source(object):
             self._source_name = kwargs['source_name']
         if 'is_typed' in kwargs:
             self._is_typed = kwargs['is_typed']
+
+        # user additions
+        self._custom_types = kwargs.get('type_map', {})
 
     def get(self, name, default=None):
         try:
@@ -158,8 +167,19 @@ class Source(object):
                 data.update(other)
         self._write(data)
 
-    def dump(self):
-        return self._read()
+    def dump(self, with_custom_types=False):
+        # really needed?
+        if with_custom_types is False:
+            return self._read()
+
+        def iter_dict(data):
+            for key, value in data.items():
+                if isinstance(value, dict):
+                    yield key, dict(iter_dict(value))
+                else:
+                    yield key, self._to_custom_type(key, value)
+
+        return dict(iter_dict(self._read()))
 
     def save(self):
         try:
@@ -182,6 +202,14 @@ class Source(object):
 
         self._parent._write(result)
 
+    def _to_custom_type(self, key, value):
+        converter = self._custom_types.get(key)
+        return converter.customize(value) if converter else value
+
+    def _to_original_type(self, key, value):
+        converter = self._custom_types.get(key)
+        return converter.customize(value) if converter else value
+
     def __getattr__(self, name):
         # although the key was accessed with attribute style
         # lets keep raising a KeyError to distinguish between
@@ -197,9 +225,11 @@ class Source(object):
             return Source(parent=(self, key),
                           readonly=self._readonly,
                           source_name=self._source_name,
-                          is_typed=self._is_typed
+                          is_typed=self._is_typed,
+                          type_map=self._custom_types
                           )
-        return attr
+
+        return self._to_custom_type(key, attr)
 
     def __setitem__(self, key, value):
         if any([self._initialized is False,
@@ -209,7 +239,7 @@ class Source(object):
             super(Source, self).__setattr__(key, value)
         else:
             data = self._read()
-            data[key] = value
+            data[key] = self._to_original_type(key, value)
             self._write(data)
 
     def __delattr__(self, name):

@@ -5,7 +5,7 @@ import pytest
 import mvp
 
 
-def test_lazy_read_dict_source():
+def test_read_dict_source():
     data = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
     config = mvp.DictSource(data)
 
@@ -52,3 +52,18 @@ def test_source_items():
 
     items = [i for i in config.a.items()]
     assert items == [('b', 1)]
+
+
+def test_source_with_custom_types():
+    data = {'a': 1, 'b': {'c': 2}}
+    types = {
+        'a': mvp.CustomType(customize=str, reset=int),
+        'c': mvp.CustomType(lambda v: 2*v, lambda v: v/2)
+    }
+    config = mvp.DictSource(data, type_map=types)
+
+    assert config.a == '1'
+    assert config.b.c == 4
+
+    assert config.dump() == data
+    assert config.dump(with_custom_types=True) == {'a': '1', 'b': {'c': 4}}

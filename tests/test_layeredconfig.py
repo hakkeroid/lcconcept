@@ -35,6 +35,15 @@ def test_read_layered_sources():
     assert config.b['y'] == 7
 
 
+def test_layered_len():
+    config = mvp.LayeredConfig(
+        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
+        mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    )
+
+    assert len(config) == 3
+
+
 def test_write_layered_source():
     source1 = mvp.DictSource({'a': 1, 'b': {'c': 2}})
     source2 = mvp.DictSource({'x': 6, 'b': {'y': 7}})
@@ -82,8 +91,11 @@ def test_source_items():
         mvp.DictSource({'x': 6, 'b': {'y': 7}})
     )
 
-    items = [i for i in config.b.items()]
-    assert items == [('y', 7), ('c', 2)]
+    items = list(config.items())
+    assert items == [('a', 1), ('b', config.b), ('x', 6)]
+
+    items = list(config.b.items())
+    assert items == [('c', 2), ('y', 7)]
 
 
 def test_layered_setdefault():
@@ -99,6 +111,33 @@ def test_layered_setdefault():
     assert config.b.setdefault('nonexisting', 20) == 20
     assert config.b.nonexisting == 20
     assert 'nonexisting' in source2.b
+
+
+@pytest.mark.parametrize('container', [
+    dict, mvp.DictSource
+])
+def test_layered_simple_update(container):
+    source1 = mvp.DictSource({'a': 1, 'b': {'c': 2}})
+    source2 = mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    config = mvp.LayeredConfig(source1, source2)
+
+    data1 = container({'a': 10, 'x': 60})
+    data2 = container({'c': 20})
+    data3 = container({'y': 70})
+
+    config.update(data1)
+    config.b.update(data2, data3)
+
+    assert config.a == 10
+    assert config.x == 60
+    assert config.b.c == 20
+    assert config.b.y == 70
+
+    assert source1.a == 10
+    assert source1.b.c == 20
+
+    assert source2.x == 60
+    assert source2.b.y == 70
 
 
 def test_layered_config_with_untyped_source():

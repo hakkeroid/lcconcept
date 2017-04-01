@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from collections import deque, namedtuple
+from collections import deque, namedtuple, defaultdict
 import os
 try:
     import urlparse
@@ -36,14 +36,26 @@ class LayeredConfig(object):
             return default
 
     def items(self):
-        current_queue = deque(self._sources)
+        def _items():
+            current_queue = deque(self._sources)
 
-        while current_queue:
-            source = current_queue.pop()
-            subsource = self._get_sublevel_source_from_keychain(source)
+            subqueues = defaultdict(deque)
 
-            for key, value in subsource.items():
-                yield key, value
+            while current_queue:
+                source = current_queue.pop()
+                subsource = self._get_sublevel_source_from_keychain(source)
+
+                for key, value in subsource.items():
+                    if isinstance(value, dict):
+                        subqueues[key].appendleft(source)
+                    else:
+                        yield key, value
+
+            for key, subqueue in subqueues.items():
+                yield key, LayeredConfig(*subqueue,
+                                         keychain=self._keychain+[key]
+                                         )
+        return sorted(_items())
 
     def setdefault(self, name, value):
         try:
@@ -51,6 +63,34 @@ class LayeredConfig(object):
         except KeyError:
             self[name] = value
             return value
+
+    def update(self, *others):
+        for other in others:
+            for key, value in other.items():
+                self[key] = value
+
+    def dump(self):
+        def _dump(obj):
+            for key, value in obj.items():
+                if isinstance(value, LayeredConfig):
+                    yield key, dict(_dump(value))
+                else:
+                    yield key, value
+
+        return dict(_dump(self))
+
+    def _get_sublevel_source_from_keychain(self, source):
+        """Return the sublevel of a source according to the keychain"""
+        traversed_source = source
+        for key in self._keychain:
+            traversed_source = traversed_source[key]
+        return traversed_source
+
+    def _get_type_info(self, value):
+        return type(value)
+
+    def _convert_value_to_type(self, value, type_info):
+        return type_info(value)
 
     def __getattr__(self, key):
         return self[key]
@@ -145,19 +185,25 @@ class LayeredConfig(object):
             else:
                 raise TypeError('No writable sources found')
 
+    def __eq__(self, other):
+        return self.dump() == other.dump()
 
-    def _get_sublevel_source_from_keychain(self, source):
-        """Return the sublevel of a source according to the keychain"""
-        traversed_source = source
-        for key in self._keychain:
-            traversed_source = traversed_source[key]
-        return traversed_source
+    def __len__(self):
+        return len(list(iter(self)))
 
-    def _get_type_info(self, value):
-        return type(value)
+    def __iter__(self):
+        current_queue = deque(self._sources)
 
-    def _convert_value_to_type(self, value, type_info):
-        return type_info(value)
+        yielded = set()
+
+        while current_queue:
+            source = current_queue.pop()
+            subsource = self._get_sublevel_source_from_keychain(source)
+
+            for key in subsource:
+                if key not in yielded:
+                    yielded.add(key)
+                    yield key
 
 
 class SourceMeta(type):

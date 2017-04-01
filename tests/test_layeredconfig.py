@@ -35,6 +35,32 @@ def test_read_layered_sources():
     assert config.b['y'] == 7
 
 
+def test_write_layered_source():
+    source1 = mvp.DictSource({'a': 1, 'b': {'c': 2}})
+    source2 = mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    config = mvp.LayeredConfig(source1, source2)
+
+    assert config.a == 1
+    assert config.b.c == 2
+    assert config.b.y == 7
+
+    config.a = 10
+    config['x'] = 60
+    config['b'].c = 20
+    config.b['y'] = 70
+
+    assert config.a == 10
+    assert config.x == 60
+    assert config.b.c == 20
+    assert config.b.y == 70
+
+    assert source1.a == 10
+    assert source1.b.c == 20
+
+    assert source2.x == 60
+    assert source2.b.y == 70
+
+
 def test_layered_get():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),

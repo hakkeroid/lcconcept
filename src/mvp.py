@@ -16,8 +16,10 @@ except ImportError as err:
     pass
 
 
-class LayeredConfig:
-    """Presenter"""
+class LayeredConfig(object):
+    """Multi layer config object"""
+
+    _initialized = False
 
     def __init__(self, *sources, **kwargs):
         self._sources = sources
@@ -25,6 +27,7 @@ class LayeredConfig:
         # _keychain is a list of keys that led from the root
         # config to this (sub)config
         self._keychain = kwargs.get('keychain', [])
+        self._initialized = True
 
     def get(self, name, default=None):
         try:
@@ -41,6 +44,13 @@ class LayeredConfig:
 
             for key, value in subsource.items():
                 yield key, value
+
+    def setdefault(self, name, value):
+        try:
+            return self[name]
+        except KeyError:
+            self[name] = value
+            return value
 
     def __getattr__(self, key):
         return self[key]
@@ -100,6 +110,25 @@ class LayeredConfig:
             return untyped_value
         else:
             raise KeyError("Key '%s' was not found" % key)
+
+    def __setattr__(self, attr, value):
+        self[attr] = value
+
+    def __setitem__(self, key, value):
+        if any([self._initialized is False,
+                key == '_initialized',
+                key in self.__dict__,
+                key in LayeredConfig.__dict__]):
+            super(LayeredConfig, self).__setattr__(key, value)
+        else:
+            current_queue = deque(self._sources)
+
+            while current_queue:
+                source = current_queue.pop()
+                subsource = self._get_sublevel_source_from_keychain(source)
+
+                if key in subsource:
+                    subsource[key] = value
 
     def _get_sublevel_source_from_keychain(self, source):
         """Return the sublevel of a source according to the keychain"""

@@ -18,6 +18,23 @@ def test_read_dict_source():
     assert config.b['d'] == {'e': 3}
 
 
+def test_write_dict_source():
+    data = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
+    config = mvp.DictSource(data)
+
+    assert config.a == 1
+    assert config.b.c == 2
+    assert config.b.d == {'e': 3}
+
+    config.a = 10
+    config.b.c = 20
+    config.b.d.e = 30
+
+    assert config.a == 10
+    assert config.b.c == 20
+    assert config.b.d == {'e': 30}
+
+
 def test_source_get():
     config = mvp.DictSource({'a': 1})
 

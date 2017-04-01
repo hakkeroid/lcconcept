@@ -49,6 +49,16 @@ def test_layered_get():
     assert config.get('nonexisting', 'default') == 'default'
 
 
+def test_source_items():
+    config = mvp.LayeredConfig(
+        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
+        mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    )
+
+    items = [i for i in config.b.items()]
+    assert items == [('y', 7), ('c', 2)]
+
+
 
 def test_layered_config_with_untyped_source():
     typed_source = {'a': 1, 'b': {'c': 2}}

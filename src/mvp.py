@@ -32,6 +32,16 @@ class LayeredConfig:
         except KeyError:
             return default
 
+    def items(self):
+        current_queue = deque(self._sources)
+
+        while current_queue:
+            source = current_queue.pop()
+            subsource = self._get_sublevel_source_from_keychain(source)
+
+            for key, value in subsource.items():
+                yield key, value
+
     def __getattr__(self, key):
         return self[key]
 

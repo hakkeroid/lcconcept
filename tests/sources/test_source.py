@@ -26,6 +26,14 @@ def test_source_get():
     assert config.get('nonexisting', 'default') == 'default'
 
 
+def test_source_items():
+    data = {'a': {'b': 1}}
+    config = mvp.DictSource(data)
+
+    items = [i for i in config.a.items()]
+    assert items == [('b', 1)]
+
+
 def test_source_setdefault():
     config = mvp.DictSource({'a': 1})
 
@@ -48,14 +56,6 @@ def test_source_update(container):
     config.a.update(data1, data2)
 
     assert config == expected
-
-
-def test_source_items():
-    data = {'a': {'b': 1}}
-    config = mvp.DictSource(data)
-
-    items = [i for i in config.a.items()]
-    assert items == [('b', 1)]
 
 
 def test_source_with_custom_types():

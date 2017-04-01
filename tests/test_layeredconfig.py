@@ -20,7 +20,7 @@ def test_properly_return_none_values():
     assert config.a is None
 
 
-def test_layered_read():
+def test_read_layered_sources():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),
         mvp.DictSource({'x': 6, 'b': {'y': 7}})
@@ -29,6 +29,25 @@ def test_layered_read():
     assert config.a == 1
     assert config.b.c == 2
     assert config.b.y == 7
+
+    assert config['a'] == 1
+    assert config['b'].c == 2
+    assert config.b['y'] == 7
+
+
+def test_layered_get():
+    config = mvp.LayeredConfig(
+        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
+        mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    )
+
+    assert config.get('a') == 1
+    assert config.get('x') == 6
+    assert config.get('b').get('c') == 2
+    assert config.get('b').get('y') == 7
+    assert config.get('nonexisting') is None
+    assert config.get('nonexisting', 'default') == 'default'
+
 
 
 def test_layered_config_with_untyped_source():

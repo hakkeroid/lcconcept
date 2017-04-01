@@ -13,6 +13,10 @@ def test_read_dict_source():
     assert config.b.c == 2
     assert config.b.d == {'e': 3}
 
+    assert config['a'] == 1
+    assert config['b'].c == 2
+    assert config.b['d'] == {'e': 3}
+
 
 def test_source_get():
     config = mvp.DictSource({'a': 1})

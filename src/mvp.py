@@ -26,7 +26,16 @@ class LayeredConfig:
         # config to this (sub)config
         self._keychain = kwargs.get('keychain', [])
 
+    def get(self, name, default=None):
+        try:
+            return self[name]
+        except KeyError:
+            return default
+
     def __getattr__(self, key):
+        return self[key]
+
+    def __getitem__(self, key):
         current_queue = deque(self._sources)
 
         # gathers all sources which returned a sublevel source. they

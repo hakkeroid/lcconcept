@@ -7,11 +7,20 @@ import pytest
 import mvp
 
 
-def test_layered_config():
+def test_raise_keyerrors_on_empty_multilayer_config():
     config = mvp.LayeredConfig()
     with pytest.raises(KeyError):
         assert config.a
 
+def test_properly_return_none_values():
+    config = mvp.LayeredConfig(
+        mvp.DictSource({'a': None})
+    )
+
+    assert config.a is None
+
+
+def test_layered_read():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),
         mvp.DictSource({'x': 6, 'b': {'y': 7}})

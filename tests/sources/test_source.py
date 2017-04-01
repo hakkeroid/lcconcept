@@ -41,6 +41,7 @@ def test_source_get():
     assert config.get('a') == 1
     assert config.get('nonexisting') is None
     assert config.get('nonexisting', 'default') == 'default'
+    assert 'nonexisting' not in config
 
 
 def test_source_items():

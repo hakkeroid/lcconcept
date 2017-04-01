@@ -73,6 +73,7 @@ def test_layered_get():
     assert config.get('b').get('y') == 7
     assert config.get('nonexisting') is None
     assert config.get('nonexisting', 'default') == 'default'
+    assert 'nonexisting' not in config
 
 
 def test_source_items():
@@ -84,6 +85,20 @@ def test_source_items():
     items = [i for i in config.b.items()]
     assert items == [('y', 7), ('c', 2)]
 
+
+def test_layered_setdefault():
+    source1 = mvp.DictSource({'a': 1, 'b': {'c': 2}})
+    source2 = mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    config = mvp.LayeredConfig(source1, source2)
+
+    assert config.setdefault('a', 10) == 1
+    assert config.setdefault('nonexisting', 10) == 10
+    assert config.nonexisting == 10
+    assert 'nonexisting' in source2
+
+    assert config.b.setdefault('nonexisting', 20) == 20
+    assert config.b.nonexisting == 20
+    assert 'nonexisting' in source2.b
 
 
 def test_layered_config_with_untyped_source():

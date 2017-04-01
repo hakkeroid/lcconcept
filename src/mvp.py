@@ -123,12 +123,28 @@ class LayeredConfig(object):
         else:
             current_queue = deque(self._sources)
 
+            # will be used if the key could not be found in any source
+            # which means that a new key/value shall be added to the
+            # config.
+            writable_source = None
+
             while current_queue:
                 source = current_queue.pop()
                 subsource = self._get_sublevel_source_from_keychain(source)
 
+                if writable_source is None and not subsource._readonly:
+                    writable_source = subsource
+
                 if key in subsource:
                     subsource[key] = value
+                    return
+
+            # no source was found so write it to first writable source
+            if writable_source:
+                writable_source[key] = value
+            else:
+                raise TypeError('No writable sources found')
+
 
     def _get_sublevel_source_from_keychain(self, source):
         """Return the sublevel of a source according to the keychain"""

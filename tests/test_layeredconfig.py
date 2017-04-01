@@ -88,14 +88,25 @@ def test_layered_get():
 def test_source_items():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),
+        mvp.DictSource({'a': '10'}),
         mvp.DictSource({'x': 6, 'b': {'y': 7}})
     )
 
     items = list(config.items())
-    assert items == [('a', 1), ('b', config.b), ('x', 6)]
+    assert items == [('a', '10'), ('b', config.b), ('x', 6)]
 
     items = list(config.b.items())
     assert items == [('c', 2), ('y', 7)]
+
+
+def test_layered_dump():
+    config = mvp.LayeredConfig(
+        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
+        mvp.DictSource({'a': '10'}),
+        mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    )
+
+    assert config.dump() == {'a': '10', 'b': {'c': 2, 'y': 7}, 'x': 6}
 
 
 def test_layered_setdefault():
@@ -175,3 +186,5 @@ def test_layered_config_with_untyped_source():
     assert config.a == 10
     assert config.b.c == 20
     assert config.b.d.e == '30'
+
+    # assert config.dump()

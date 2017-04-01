@@ -41,15 +41,23 @@ class LayeredConfig(object):
 
             subqueues = defaultdict(deque)
 
+            yielded = set()
+
             while current_queue:
                 source = current_queue.pop()
                 subsource = self._get_sublevel_source_from_keychain(source)
 
                 for key, value in subsource.items():
                     if isinstance(value, dict):
+                        # identical keys that have dicts as values needs
+                        # to be merged
                         subqueues[key].appendleft(source)
                     else:
-                        yield key, value
+                        # all other identical keys will shadow
+                        # subsequent keys
+                        if key not in yielded:
+                            yield key, value
+                            yielded.add(key)
 
             for key, subqueue in subqueues.items():
                 yield key, LayeredConfig(*subqueue,

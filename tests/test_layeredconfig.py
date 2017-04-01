@@ -13,6 +13,15 @@ def test_raise_keyerrors_on_empty_multilayer_config():
         assert config.a
 
 
+def test_set_keychain():
+    config = mvp.LayeredConfig(
+        mvp.DictSource({'a': {'b': {'c': 2}}}),
+        keychain=('a', 'b')
+    )
+
+    assert config.dump() == {'c': 2}
+
+
 def test_properly_return_none_values():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': None})

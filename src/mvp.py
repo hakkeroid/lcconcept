@@ -31,8 +31,12 @@ class LayeredConfig(object):
 
     @property
     def _sources(self):
+        """Return the sublevels of the sources according to the keychain"""
         for source in reversed(self._source_list):
-            yield source, self._get_sublevel_source_from_keychain(source)
+            traversed_source = source
+            for key in self._keychain:
+                traversed_source = traversed_source[key]
+            yield source, traversed_source
 
     def get(self, name, default=None):
         try:
@@ -60,9 +64,8 @@ class LayeredConfig(object):
                             yielded.add(key)
 
             for key, subqueue in subqueues.items():
-                yield key, LayeredConfig(*subqueue,
-                                         keychain=self._keychain+[key]
-                                         )
+                yield key, self._make_subconfig(subqueue, key)
+
         return sorted(_items())
 
     def setdefault(self, name, value):
@@ -87,18 +90,16 @@ class LayeredConfig(object):
 
         return dict(_dump(self))
 
-    def _get_sublevel_source_from_keychain(self, source):
-        """Return the sublevel of a source according to the keychain"""
-        traversed_source = source
-        for key in self._keychain:
-            traversed_source = traversed_source[key]
-        return traversed_source
-
     def _get_type_info(self, value):
         return type(value)
 
     def _convert_value_to_type(self, value, type_info):
         return type_info(value)
+
+    def _make_subconfig(self, sources, key):
+        return LayeredConfig(*sources,
+                             keychain=self._keychain+[key]
+                             )
 
     def __getattr__(self, key):
         return self[key]
@@ -145,9 +146,7 @@ class LayeredConfig(object):
         # statements which means either the key was not found or the key
         # is a sublevel source or it is untyped.
         if subqueue:
-            return LayeredConfig(*subqueue,
-                                 keychain=self._keychain+[key]
-                                 )
+            return self._make_subconfig(subqueue, key)
         elif untyped_value is not None:
             return untyped_value
         else:

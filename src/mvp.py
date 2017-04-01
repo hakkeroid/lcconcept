@@ -168,7 +168,7 @@ class LayeredConfig(object):
             writable_source = None
 
             for root_source, source in self._sources:
-                if writable_source is None and not root_source._readonly:
+                if writable_source is None and root_source._writable:
                     writable_source = source
 
                 if key in source:
@@ -242,6 +242,10 @@ class Source(object):
 
         # user additions
         self._custom_types = kwargs.get('type_map', {})
+
+    @property
+    def _writable(self):
+        return not self._readonly
 
     def get(self, name, default=None):
         try:

@@ -197,17 +197,21 @@ class LayeredConfig(object):
                     yield key
 
 
+MetaInfo = namedtuple('MetaInfo', 'readonly is_typed source_name')
+
+
 class SourceMeta(type):
 
     def __new__(self, name, bases, dct):
         if not '_read' in dct:
             msg = '%s is missing to the required "_read" method' % name
             raise NotImplementedError(msg)
-        if name != 'Source':
-            dct['_source_name'] = name
 
-        dct['_readonly'] = '_write' not in dct
-        dct['_is_typed'] = dct.get('_is_typed', True)
+        dct['_meta'] = MetaInfo(
+                readonly='_write' not in dct,
+                source_name=name,
+                is_typed=dct.get('_is_typed', True)
+        )
 
         return super(SourceMeta, self).__new__(self, name, bases, dct)
 
@@ -232,20 +236,16 @@ class Source(object):
         self._parent, self._parent_key = kwargs.pop('parent', (None, None))
 
         # kwargs.get would override the metaclass settings
-        # so only change if it's really given.
-        if 'readonly' in kwargs:
-            self._readonly = kwargs['readonly']
-        if 'source_name' in kwargs:
-            self._source_name = kwargs['source_name']
-        if 'is_typed' in kwargs:
-            self._is_typed = kwargs['is_typed']
+        # so only change it if it's really given.
+        if 'meta' in kwargs:
+            self._meta = kwargs['meta']
 
         # user additions
         self._custom_types = kwargs.get('type_map', {})
 
     @property
     def _writable(self):
-        return not self._readonly
+        return not self._meta.readonly
 
     def get(self, name, default=None):
         try:
@@ -293,13 +293,13 @@ class Source(object):
             pass
 
     def is_typed(self):
-        return self._is_typed
+        return self._meta.is_typed
 
     def _read(self):
         return self._parent._read()[self._parent_key]
 
     def _write(self, data):
-        if self._readonly:
+        if self._meta.readonly:
             raise TypeError('%s is not writable' % self._source_name)
 
         result = self._parent._read()
@@ -328,9 +328,7 @@ class Source(object):
         attr = self._read()[key]
         if isinstance(attr, dict):
             return Source(parent=(self, key),
-                          readonly=self._readonly,
-                          source_name=self._source_name,
-                          is_typed=self._is_typed,
+                          meta=self._meta,
                           type_map=self._custom_types
                           )
 

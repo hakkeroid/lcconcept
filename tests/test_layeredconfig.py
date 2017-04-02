@@ -71,6 +71,11 @@ def test_read_complex_layered_sources(monkeypatch):
         config.b.d.e
     assert "no attribute 'e'" in str(exc_info.value)
 
+    # config.b.d overrides a dict with a value
+    with pytest.raises(ValueError) as exc_info:
+        config.b.dump()
+    assert "conflicts" in str(exc_info.value)
+
 
 def test_layered_len():
     config = mvp.LayeredConfig(
@@ -138,6 +143,19 @@ def test_source_items(monkeypatch):
 
     items = list(config.b.items())
     assert items == [('c', 2), ('y', 7)]
+
+
+@pytest.mark.parametrize('reverse', (1, -1))
+def test_source_items_prevent_overriding_subsections_with_values(reverse):
+    sources = [
+        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
+        mvp.DictSource({'x': 6, 'b': 5})
+    ]
+    config = mvp.LayeredConfig(*sources[::reverse])
+
+    with pytest.raises(ValueError) as exc_info:
+        list(config.items())
+    assert "conflicts" in str(exc_info.value)
 
 
 def test_source_items_with_strategies_and_untyped_source(monkeypatch):

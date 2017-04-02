@@ -80,11 +80,30 @@ class LayeredConfig(object):
 
             for root_source, source in self._sources:
                 for key, value in source.items():
-                    # identical keys that have dicts as values needs
-                    # to be merged
+                    # identical keys from different sources that have
+                    # dicts as values needs to be merged
                     if isinstance(value, dict):
+                        # higher prio sources might override keys with
+                        # simple values that otherwise point to subsections
+                        if key in yielded:
+                            msg = ("The key '%s' from '%s' specifies a"
+                                   " subsection as value which conflicts"
+                                   " with a higher prioritized source"
+                                   " that wants the same value to be a"
+                                   " non-sectional instead")
+                            raise ValueError(msg % (key,
+                                root_source._meta.source_name))
                         subqueues[key].appendleft(root_source)
                         continue
+
+                    if key in subqueues:
+                        msg = ("The key '%s' from '%s' specifies a"
+                               " non-sectional value which conflicts"
+                               " with a higher prioritized source"
+                               " that wants the same value to be a"
+                               " subsection instead.")
+                        raise ValueError(msg % (key,
+                            root_source._meta.source_name))
 
                     if not source.is_typed():
                         value = self._get_typed_value(key, value)

@@ -139,6 +139,28 @@ def test_source_items():
     assert items == [('c', 2), ('y', 7)]
 
 
+def test_source_items_with_strategies():
+    config = mvp.LayeredConfig(
+        mvp.DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
+        mvp.DictSource({'a': 10, 'x': [50, 60], 'b': {'c': 20, 'd': [30, 40]}}),
+        strategies={
+            'a': mvp.add,
+            'x': mvp.collect,  # keep lists intact
+            'c': mvp.collect,  # collect values into list
+            'd': mvp.merge,    # merge lists
+        }
+    )
+
+    items = list(config.items())
+    assert items == [('a', 11),
+                     ('b', config.b),
+                     ('x', [[50, 60], [5, 6]])]
+
+    items = list(config.b.items())
+    assert items == [('c', [20, 2]),
+                     ('d', [30, 40, 3, 4])]
+
+
 def test_layered_dump():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),
@@ -226,3 +248,47 @@ def test_layered_config_with_untyped_source():
     assert config.a == 10
     assert config.b.c == 20
     assert config.b.d.e == '30'
+
+
+def test_read_layered_sources_with_strategies():
+    config = mvp.LayeredConfig(
+        mvp.DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
+        mvp.DictSource({'a': 10, 'x': [50, 60], 'b': {'c': 20, 'd': [30, 40]}}),
+        strategies={
+            'a': mvp.add,
+            'x': mvp.collect,  # keep lists intact
+            'c': mvp.collect,  # collect values into list
+            'd': mvp.merge,    # merge lists
+        }
+    )
+
+    assert config.a == 11
+    assert config.x == [[50, 60], [5, 6]]
+    assert config.b.c == [20, 2]
+    assert config.b.d == [30, 40, 3, 4]
+
+
+def test_read_layered_sources_with_strategies_and_untyped_sources(monkeypatch):
+    monkeypatch.setenv('MVP_A', 100)
+    untyped_source = io.StringIO(pytest.helpers.unindent(u"""
+        [__root__]
+        a=1000
+    """))
+
+    config = mvp.LayeredConfig(
+        mvp.Environment('MVP_'),  # last source still needs a typed source
+        mvp.DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
+        mvp.DictSource({'a': 10, 'x': [50, 60], 'b': {'c': 20, 'd': [30, 40]}}),
+        mvp.INIFile(untyped_source),
+        strategies= {
+            'a': mvp.add,
+            'x': mvp.collect,  # keep lists intact
+            'c': mvp.collect,  # collect values into list
+            'd': mvp.merge,    # merge lists
+        }
+    )
+
+    assert config.a == 1111
+    assert config.x == [[50, 60], [5, 6]]
+    assert config.b.c == [20, 2]
+    assert config.b.d == [30, 40, 3, 4]

@@ -16,6 +16,22 @@ except ImportError as err:
     pass
 
 
+def add(new, previous=None):
+    if previous is None:
+        return new
+    return previous + new
+
+
+def collect(new, previous=None):
+    if previous is None:
+        return [new]
+    return previous + [new]
+
+
+def merge(new, previous=None):
+    return add(new, previous)
+
+
 class LayeredConfig(object):
     """Multi layer config object"""
 
@@ -23,6 +39,7 @@ class LayeredConfig(object):
 
     def __init__(self, *sources, **kwargs):
         self._source_list = sources
+        self._strategy_map = kwargs.get('strategies', {})
 
         # _keychain is a list of keys that led from the root
         # config to this (sub)config
@@ -49,6 +66,7 @@ class LayeredConfig(object):
             subqueues = defaultdict(deque)
 
             yielded = set()
+            results = {}
 
             for root_source, source in self._sources:
                 for key, value in source.items():
@@ -59,9 +77,15 @@ class LayeredConfig(object):
                     else:
                         # all other identical keys will shadow
                         # subsequent keys
-                        if key not in yielded:
+                        if key in self._strategy_map:
+                            strategy = self._strategy_map[key]
+                            results[key] = strategy(value, results.get(key))
+                        elif key not in yielded:
                             yield key, value
                             yielded.add(key)
+
+            for key, value in results.items():
+                yield key, value
 
             for key, subqueue in subqueues.items():
                 yield key, self._make_subconfig(subqueue, key)
@@ -98,7 +122,8 @@ class LayeredConfig(object):
 
     def _make_subconfig(self, sources, key):
         return LayeredConfig(*sources,
-                             keychain=self._keychain+[key]
+                             keychain=self._keychain+[key],
+                             strategies=self._strategy_map
                              )
 
     def __getattr__(self, key):
@@ -114,6 +139,10 @@ class LayeredConfig(object):
         # the key to reuse its typing information. If we cannot find
         # another source simply return the untyped value as is.
         untyped_value = None
+        typed_source = None
+
+        strategy = self._strategy_map.get(key)
+        result = None
 
         for root_source, source in self._sources:
             try:
@@ -126,26 +155,48 @@ class LayeredConfig(object):
                 continue
 
             if not source.is_typed():
-                if untyped_value is None:
+                if typed_source:
+                    type_info = self._get_type_info(typed_source[key])
+                    converted_value = self._convert_value_to_type(value, type_info)
+                    if strategy:
+                        result = strategy(converted_value, result)
+                        continue
+                    else:
+                        return converted_value
+                elif untyped_value is None:
                     untyped_value = value
                 continue
+
+            if not typed_source:
+                typed_source = root_source
 
             # reaching this point means the current source is typed and if
             # untyped_value was never set before it also means this is the
             # first occurrence of the key, so we can safely return it.
             if untyped_value is None:
-                return value
+                if strategy:
+                    result = strategy(value, result)
+                    continue
+                else:
+                    return value
 
             # because untyped_value was set previously and the current
             # source is typed we can stop searching and instead convert
             # the untyped value
             type_info = self._get_type_info(value)
-            return self._convert_value_to_type(untyped_value, type_info)
+            converted_value = self._convert_value_to_type(untyped_value, type_info)
+            if strategy:
+                result = strategy(strategy(converted_value, result), value)
+                untyped_value = None
+            else:
+                return converted_value
 
         # in the while loop we always ended up in any of the continue
         # statements which means either the key was not found or the key
         # is a sublevel source or it is untyped.
-        if subqueue:
+        if result:
+            return result
+        elif subqueue:
             return self._make_subconfig(subqueue, key)
         elif untyped_value is not None:
             return untyped_value

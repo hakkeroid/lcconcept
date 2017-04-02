@@ -99,12 +99,14 @@ def test_write_layered_source():
     config['x'] = 60
     config['b'].c = 20
     config.b['y'] = 70
+    config.b['m'] = 'n'  # add new key
     config.b.d.e = 80
 
     assert config.a == 10
     assert config.x == 60
     assert config.b.c == 20
     assert config.b.y == 70
+    assert config.b.m == 'n'
     assert config.b.d.e == 80
 
     assert source1.a == 10
@@ -112,6 +114,7 @@ def test_write_layered_source():
 
     assert source2.x == 60
     assert source2.b.y == 70
+    assert source2.b.m == 'n'
     assert source2.b.d.e == 80
 
 

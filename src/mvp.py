@@ -255,6 +255,9 @@ class LayeredConfig(object):
                     yielded.add(key)
                     yield key
 
+    def __repr__(self):
+        return repr(self.dump())
+
 
 MetaInfo = namedtuple('MetaInfo', 'readonly is_typed source_name')
 
@@ -301,10 +304,11 @@ class Source(object):
 
         # user additions
         self._custom_types = kwargs.get('type_map', {})
+        self._locked = kwargs.get('readonly', False)
 
     @property
     def _writable(self):
-        return not self._meta.readonly
+        return not self._meta.readonly and not self._locked
 
     def get(self, name, default=None):
         try:
@@ -323,6 +327,8 @@ class Source(object):
         return six.iteritems(self._read())
 
     def update(self, *others):
+        self._check_writable()
+
         data = self._read()
         for other in others:
             if isinstance(other, Source):
@@ -357,9 +363,14 @@ class Source(object):
     def _read(self):
         return self._parent._read()[self._parent_key]
 
-    def _write(self, data):
+    def _check_writable(self):
         if self._meta.readonly:
-            raise TypeError('%s is not writable' % self._source_name)
+            raise TypeError('%s is a read-only source' % self._meta.source_name)
+        elif self._locked:
+            raise TypeError('%s is locked and cannot be changed' % self._meta.source_name)
+
+    def _write(self, data):
+        self._check_writable()
 
         result = self._parent._read()
         result[self._parent_key] = data
@@ -400,6 +411,8 @@ class Source(object):
                 key in self.__class__.__dict__]):
             super(Source, self).__setattr__(key, value)
         else:
+            self._check_writable()
+
             data = self._read()
             data[key] = self._to_original_type(key, value)
             self._write(data)
@@ -408,6 +421,8 @@ class Source(object):
         del self[name]
 
     def __delitem__(self, key):
+        self._check_writable()
+
         data = self._read()
         del data[key]
         self._write(data)
@@ -464,8 +479,19 @@ class Environment(Source):
 
         return data
 
-    #def _write(self, data):
-        #self._data = data
+    def _write(self, data):
+        def _write(section, keychain=None):
+            if keychain is None:
+                keychain = []
+
+            for key, value in section.items():
+                if isinstance(value, dict):
+                    _write(value, keychain + [key])
+                else:
+                    full_key = '_'.join(keychain + [key]).upper()
+                    os.environ[self.prefix + full_key] = str(value)
+
+        _write(data)
 
 
 class YamlFile(Source):
@@ -542,12 +568,6 @@ class INIFile(Source):
             else:
                 data.setdefault(section, {}).update(sublevel)
         return data
-
-    # def _write(self, data):
-        # import ipdb; ipdb.set_trace()
-        # return
-        # with open(self._source, 'w') as fh:
-            # self.json.dump(data, fh)
 
 
 class EtcdStore(Source):

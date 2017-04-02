@@ -125,24 +125,33 @@ def test_layered_get():
     assert 'nonexisting' not in config
 
 
-def test_source_items():
+def test_source_items(monkeypatch):
+    monkeypatch.setenv('MVP_A', 10)
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.DictSource({'a': '10'}),
+        mvp.Environment('MVP_'),
         mvp.DictSource({'x': 6, 'b': {'y': 7}})
     )
 
     items = list(config.items())
-    assert items == [('a', '10'), ('b', config.b), ('x', 6)]
+    assert items == [('a', 10), ('b', config.b), ('x', 6)]
 
     items = list(config.b.items())
     assert items == [('c', 2), ('y', 7)]
 
 
-def test_source_items_with_strategies():
+def test_source_items_with_strategies_and_untyped_source(monkeypatch):
+    monkeypatch.setenv('MVP_A', 100)
+    untyped_source = io.StringIO(pytest.helpers.unindent(u"""
+        [__root__]
+        a=1000
+    """))
+
     config = mvp.LayeredConfig(
+        mvp.Environment('MVP_'),  # last source still needs a typed source
         mvp.DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
         mvp.DictSource({'a': 10, 'x': [50, 60], 'b': {'c': 20, 'd': [30, 40]}}),
+        mvp.INIFile(untyped_source),
         strategies={
             'a': mvp.add,
             'x': mvp.collect,  # keep lists intact
@@ -152,7 +161,7 @@ def test_source_items_with_strategies():
     )
 
     items = list(config.items())
-    assert items == [('a', 11),
+    assert items == [('a', 1111),
                      ('b', config.b),
                      ('x', [[50, 60], [5, 6]])]
 
@@ -214,7 +223,8 @@ def test_layered_simple_update(container):
 
 
 def test_layered_config_with_untyped_source():
-    typed_source = {'a': 1, 'b': {'c': 2}}
+    typed_source1 = {'x': 5, 'b': {'y': 6}}
+    typed_source2 = {'a': 1, 'b': {'c': 2}}
     untyped_source1 = io.StringIO(pytest.helpers.unindent(u"""
         [__root__]
         a=11
@@ -222,22 +232,28 @@ def test_layered_config_with_untyped_source():
     untyped_source2 = io.StringIO(pytest.helpers.unindent(u"""
         [__root__]
         a=10
+        x=50
 
         [b]
         c=20
+        y=60
 
         [b.d]
         e=30
     """))
-    typed = mvp.DictSource(typed_source)
+    typed1 = mvp.DictSource(typed_source1)
+    typed2 = mvp.DictSource(typed_source2)
     untyped1 = mvp.INIFile(untyped_source1)
     untyped2 = mvp.INIFile(untyped_source2, subsection_token='.')
-    config = mvp.LayeredConfig(typed, untyped1, untyped2)
+    config = mvp.LayeredConfig(typed1, typed2, untyped1, untyped2)
 
-    assert typed.a == 1
-    assert typed.b.c == 2
+    assert typed1.x == 5
+    assert typed1.b.y == 6
+
+    assert typed2.a == 1
+    assert typed2.b.c == 2
     with pytest.raises(KeyError):
-        typed.b.d.e
+        typed2.b.d.e
 
     assert untyped1.a == '11'
 
@@ -245,8 +261,10 @@ def test_layered_config_with_untyped_source():
     assert untyped2.b.c == '20'
     assert untyped2.b.d.e == '30'
 
-    assert config.a == 10
+    assert config.a == 10    # found in first typed source
+    assert config.x == 50    # found in second typed source
     assert config.b.c == 20
+    assert config.b.y == 60
     assert config.b.d.e == '30'
 
 

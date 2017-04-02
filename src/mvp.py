@@ -55,6 +55,16 @@ class LayeredConfig(object):
                 traversed_source = traversed_source[key]
             yield source, traversed_source
 
+    @property
+    def _typed_sources(self):
+        for source in reversed(self._source_list):
+            if not source.is_typed():
+                continue
+            traversed_source = source
+            for key in self._keychain:
+                traversed_source = traversed_source[key]
+            yield source, traversed_source
+
     def get(self, name, default=None):
         try:
             return self[name]
@@ -70,19 +80,25 @@ class LayeredConfig(object):
 
             for root_source, source in self._sources:
                 for key, value in source.items():
+                    # identical keys that have dicts as values needs
+                    # to be merged
                     if isinstance(value, dict):
-                        # identical keys that have dicts as values needs
-                        # to be merged
                         subqueues[key].appendleft(root_source)
+                        continue
+
+                    if not source.is_typed():
+                        value = self._get_typed_value(key, value)
+
+                    # all other identical keys will shadow
+                    # subsequent keys
+                    if key in self._strategy_map:
+                        strategy = self._strategy_map[key]
+                        results[key] = strategy(value, results.get(key))
+                    elif key in yielded:
+                        continue
                     else:
-                        # all other identical keys will shadow
-                        # subsequent keys
-                        if key in self._strategy_map:
-                            strategy = self._strategy_map[key]
-                            results[key] = strategy(value, results.get(key))
-                        elif key not in yielded:
-                            yield key, value
-                            yielded.add(key)
+                        yield key, value
+                        yielded.add(key)
 
             for key, value in results.items():
                 yield key, value
@@ -114,6 +130,17 @@ class LayeredConfig(object):
 
         return dict(_dump(self))
 
+    def _get_typed_value(self, key, value):
+        for root_source, source in self._typed_sources:
+            try:
+                typed_value = source[key]
+            except KeyError:
+                continue
+
+            type_info = self._get_type_info(typed_value)
+            return self._convert_value_to_type(value, type_info)
+        return value
+
     def _get_type_info(self, value):
         return type(value)
 
@@ -130,16 +157,9 @@ class LayeredConfig(object):
         return self[key]
 
     def __getitem__(self, key):
-        # will then be used as input for a new sublevel config with the
-        # current key added to the keychain.
+        # will be used as input for a new sublevel config with the
+        # key added to the keychain.
         subqueue = deque()
-
-        # in case the current source is untyped save the found value and
-        # keep searching the other sources for additional occurrences of
-        # the key to reuse its typing information. If we cannot find
-        # another source simply return the untyped value as is.
-        untyped_value = None
-        typed_source = None
 
         strategy = self._strategy_map.get(key)
         result = None
@@ -155,41 +175,12 @@ class LayeredConfig(object):
                 continue
 
             if not source.is_typed():
-                if typed_source:
-                    type_info = self._get_type_info(typed_source[key])
-                    converted_value = self._convert_value_to_type(value, type_info)
-                    if strategy:
-                        result = strategy(converted_value, result)
-                        continue
-                    else:
-                        return converted_value
-                elif untyped_value is None:
-                    untyped_value = value
-                continue
+                value = self._get_typed_value(key, value)
 
-            if not typed_source:
-                typed_source = root_source
-
-            # reaching this point means the current source is typed and if
-            # untyped_value was never set before it also means this is the
-            # first occurrence of the key, so we can safely return it.
-            if untyped_value is None:
-                if strategy:
-                    result = strategy(value, result)
-                    continue
-                else:
-                    return value
-
-            # because untyped_value was set previously and the current
-            # source is typed we can stop searching and instead convert
-            # the untyped value
-            type_info = self._get_type_info(value)
-            converted_value = self._convert_value_to_type(untyped_value, type_info)
             if strategy:
-                result = strategy(strategy(converted_value, result), value)
-                untyped_value = None
+                result = strategy(value, result)
             else:
-                return converted_value
+                return value
 
         # in the while loop we always ended up in any of the continue
         # statements which means either the key was not found or the key
@@ -198,8 +189,6 @@ class LayeredConfig(object):
             return result
         elif subqueue:
             return self._make_subconfig(subqueue, key)
-        elif untyped_value is not None:
-            return untyped_value
         else:
             raise KeyError("Key '%s' was not found" % key)
 

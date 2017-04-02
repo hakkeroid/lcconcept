@@ -39,8 +39,8 @@ def test_missing_yaml_dependencies(monkeypatch):
 @pytest.mark.skipif('etcd' in SKIP, reason='Skip if dependencies are installed')
 def test_missing_etcd_dependencies(monkeypatch):
     with pytest.raises(ImportError) as exc_info:
-        import mvp
-        mvp.YamlFile('/path')
+        import layeredconfig
+        layeredconfig.YamlFile('/path')
 
     try:
         message = exc_info.value.message

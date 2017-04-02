@@ -2,12 +2,13 @@
 
 import pytest
 
-import mvp
+from layeredconfig import DictSource, CustomType
+from layeredconfig.source import Source
 
 
 def test_enforce_read_method():
     with pytest.raises(NotImplementedError) as exc_info:
-        class MySource(mvp.Source):
+        class MySource(Source):
             pass
 
     assert 'required "_read"' in str(exc_info.value)
@@ -15,7 +16,7 @@ def test_enforce_read_method():
 
 def test_read_dict_source():
     data = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
-    config = mvp.DictSource(data)
+    config = DictSource(data)
 
     assert config.a == 1
     assert config.b.c == 2
@@ -28,7 +29,7 @@ def test_read_dict_source():
 
 def test_write_dict_source():
     data = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
-    config = mvp.DictSource(data)
+    config = DictSource(data)
 
     assert config.a == 1
     assert config.b.c == 2
@@ -45,7 +46,7 @@ def test_write_dict_source():
 
 
 def test_prevent_writing_to_readonly_source():
-    class ReadonlySource(mvp.Source):
+    class ReadonlySource(Source):
         def _read(self):
             return {}
 
@@ -68,7 +69,7 @@ def test_prevent_writing_to_locked_source():
 
 
 def test_source_get():
-    config = mvp.DictSource({'a': 1})
+    config = DictSource({'a': 1})
 
     assert config.get('a') == 1
     assert config.get('nonexisting') is None
@@ -78,14 +79,14 @@ def test_source_get():
 
 def test_source_items():
     data = {'a': {'b': 1}}
-    config = mvp.DictSource(data)
+    config = DictSource(data)
 
     items = [i for i in config.a.items()]
     assert items == [('b', 1)]
 
 
 def test_source_setdefault():
-    config = mvp.DictSource({'a': 1})
+    config = DictSource({'a': 1})
 
     assert config.setdefault('a', 10) == 1
     assert config.setdefault('nonexisting', 10) == 10
@@ -93,11 +94,11 @@ def test_source_setdefault():
 
 
 @pytest.mark.parametrize('container', [
-    dict, mvp.DictSource
+    dict, DictSource
 ])
 def test_source_update(container):
     source = {'a': {'b': 1}}
-    config = mvp.DictSource(source)
+    config = DictSource(source)
 
     data1 = {'x': 4}
     data2 = container({'y': 5})
@@ -111,10 +112,10 @@ def test_source_update(container):
 def test_source_with_custom_types():
     data = {'a': 1, 'b': {'c': 2}}
     types = {
-        'a': mvp.CustomType(customize=str, reset=int),
-        'c': mvp.CustomType(lambda v: 2*v, lambda v: v/2)
+        'a': CustomType(customize=str, reset=int),
+        'c': CustomType(lambda v: 2*v, lambda v: v/2)
     }
-    config = mvp.DictSource(data, type_map=types)
+    config = DictSource(data, type_map=types)
 
     assert config.a == '1'
     assert config.b.c == 4

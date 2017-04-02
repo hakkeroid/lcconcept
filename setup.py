@@ -7,8 +7,6 @@ from setuptools import setup, find_packages
 
 requirements = [
     'six',
-    # 'PyYAML',
-    'requests'
 ]
 
 if sys.version_info < (2, 7, 0):
@@ -26,7 +24,6 @@ setup(
     author='Philipp Busch',
     author_email='hakkeroid@philippbusch.de',
     packages=find_packages(where='src'),
-    py_modules=['mvp'],
     package_dir={'': 'src'},
     include_package_data=True,
     license="BSD",

@@ -2,14 +2,14 @@
 
 import pytest
 
-import mvp
+from layeredconfig import Environment
 
 
 def test_read_environment_source(monkeypatch):
     monkeypatch.setenv('MVP_A', 1)
     monkeypatch.setenv('MVP_B_C', 2)
     monkeypatch.setenv('MVP_B_D_E', 3)
-    config = mvp.Environment(prefix='MVP_')
+    config = Environment(prefix='MVP_')
 
     assert config.a == '1'
     assert config.b.c == '2'
@@ -18,7 +18,7 @@ def test_read_environment_source(monkeypatch):
 
 def test_write_environment_fails(monkeypatch):
     monkeypatch.setenv('MVP_A', 1)
-    config = mvp.Environment(prefix='MVP_', readonly=True)
+    config = Environment(prefix='MVP_', readonly=True)
 
     with pytest.raises(TypeError) as exc_info:
         config.a = 10
@@ -29,7 +29,7 @@ def test_write_environment_source(monkeypatch):
     monkeypatch.setenv('MVP_A', 1)
     monkeypatch.setenv('MVP_B_C', 2)
     monkeypatch.setenv('MVP_B_D_E', 3)
-    config = mvp.Environment(prefix='MVP_')
+    config = Environment(prefix='MVP_')
 
     config.a = 10
     config.b.c = '20'

@@ -4,7 +4,7 @@ import io
 
 import pytest
 
-import mvp
+from layeredconfig import INIFile
 
 
 def test_ini_source():
@@ -23,7 +23,7 @@ def test_ini_source():
         g=4
     """))
 
-    config = mvp.INIFile(inifile)
+    config = INIFile(inifile)
     assert config.a == '1'
     assert config.b.c == '2'
     assert config['b.d'].e == '3'
@@ -46,7 +46,7 @@ def test_ini_source_subsections():
         g=4
     """))
 
-    config = mvp.INIFile(inifile, subsection_token='.')
+    config = INIFile(inifile, subsection_token='.')
     assert config.a == '1'
     assert config.b.c == '2'
     assert config.b.d.e == '3'

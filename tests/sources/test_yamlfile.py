@@ -2,7 +2,7 @@
 
 import pytest
 
-import mvp
+from layeredconfig import YamlFile
 
 try:
     import yaml
@@ -30,7 +30,7 @@ def yaml_file(tmpdir, data):
 
 
 def test_lazy_read_yaml_source(yaml_file):
-    config = mvp.YamlFile(str(yaml_file.path))
+    config = YamlFile(str(yaml_file.path))
 
     assert config.a == 1
     assert config.b.c == 2
@@ -49,7 +49,7 @@ def test_lazy_read_yaml_source(yaml_file):
 
 
 def test_write_yaml_source(yaml_file):
-    config = mvp.YamlFile(str(yaml_file.path))
+    config = YamlFile(str(yaml_file.path))
     expected = yaml_file.data
     expected['a'] = 10
     expected['b']['c'] = 20

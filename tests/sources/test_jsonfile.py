@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-import mvp
+from layeredconfig import JsonFile
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def json_file(tmpdir, data):
 
 
 def test_lazy_read_json_source(json_file):
-    config = mvp.JsonFile(str(json_file.path))
+    config = JsonFile(str(json_file.path))
 
     assert config.a == 1
     assert config.b.c == 2
@@ -43,7 +43,7 @@ def test_lazy_read_json_source(json_file):
 
 
 def test_write_json_source(json_file):
-    config = mvp.JsonFile(str(json_file.path))
+    config = JsonFile(str(json_file.path))
     expected = json_file.data
     expected['a'] = 10
     expected['b']['c'] = 20

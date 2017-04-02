@@ -4,18 +4,20 @@ import io
 
 import pytest
 
-import mvp
+from layeredconfig import LayeredConfig
+from layeredconfig import DictSource, Environment, INIFile
+from layeredconfig import strategy
 
 
 def test_raise_keyerrors_on_empty_multilayer_config():
-    config = mvp.LayeredConfig()
+    config = LayeredConfig()
     with pytest.raises(KeyError):
         assert config.a
 
 
 def test_set_keychain():
-    config = mvp.LayeredConfig(
-        mvp.DictSource({'a': {'b': {'c': 2}}}),
+    config = LayeredConfig(
+        DictSource({'a': {'b': {'c': 2}}}),
         keychain=('a', 'b')
     )
 
@@ -23,17 +25,17 @@ def test_set_keychain():
 
 
 def test_properly_return_none_values():
-    config = mvp.LayeredConfig(
-        mvp.DictSource({'a': None})
+    config = LayeredConfig(
+        DictSource({'a': None})
     )
 
     assert config.a is None
 
 
 def test_read_layered_sources():
-    config = mvp.LayeredConfig(
-        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
+    config = LayeredConfig(
+        DictSource({'a': 1, 'b': {'c': 2}}),
+        DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
     )
 
     assert config.a == 1
@@ -50,13 +52,13 @@ def test_read_complex_layered_sources(monkeypatch):
     monkeypatch.setenv('MVP1_A', 1000)
     monkeypatch.setenv('MVP2_B_M_E', 4000)
 
-    config = mvp.LayeredConfig(
-        mvp.Environment('MVP1_'),  # untyped shadowing
-        mvp.DictSource({'a': 1, 'b': {'c': 2, 'e': 400}}),
-        mvp.DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}}),
-        mvp.DictSource({'a': 100, 'b': {'m': {'e': 800}}}),     # shadowing
-        mvp.DictSource({'x': 'x', 'b': {'y': 0.7, 'd': 800}}),  # type changing
-        mvp.Environment('MVP2_'),  # untyped shadowing
+    config = LayeredConfig(
+        Environment('MVP1_'),  # untyped shadowing
+        DictSource({'a': 1, 'b': {'c': 2, 'e': 400}}),
+        DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}}),
+        DictSource({'a': 100, 'b': {'m': {'e': 800}}}),     # shadowing
+        DictSource({'x': 'x', 'b': {'y': 0.7, 'd': 800}}),  # type changing
+        Environment('MVP2_'),  # untyped shadowing
     )
 
     assert config.a == 100
@@ -78,18 +80,18 @@ def test_read_complex_layered_sources(monkeypatch):
 
 
 def test_layered_len():
-    config = mvp.LayeredConfig(
-        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
+    config = LayeredConfig(
+        DictSource({'a': 1, 'b': {'c': 2}}),
+        DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
     )
 
     assert len(config) == 3
 
 
 def test_write_layered_source():
-    source1 = mvp.DictSource({'a': 1, 'b': {'c': 2}})
-    source2 = mvp.DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
-    config = mvp.LayeredConfig(source1, source2)
+    source1 = DictSource({'a': 1, 'b': {'c': 2}})
+    source2 = DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
+    config = LayeredConfig(source1, source2)
 
     assert config.a == 1
     assert config.b.c == 2
@@ -133,9 +135,9 @@ def test_write_layered_source_fails(key, message):
 
 
 def test_layered_get():
-    config = mvp.LayeredConfig(
-        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
+    config = LayeredConfig(
+        DictSource({'a': 1, 'b': {'c': 2}}),
+        DictSource({'x': 6, 'b': {'y': 7, 'd': {'e': 8}}})
     )
 
     assert config.get('a') == 1
@@ -149,10 +151,10 @@ def test_layered_get():
 
 def test_source_items(monkeypatch):
     monkeypatch.setenv('MVP_A', 10)
-    config = mvp.LayeredConfig(
-        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.Environment('MVP_'),
-        mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    config = LayeredConfig(
+        DictSource({'a': 1, 'b': {'c': 2}}),
+        Environment('MVP_'),
+        DictSource({'x': 6, 'b': {'y': 7}})
     )
 
     items = list(config.items())
@@ -165,10 +167,10 @@ def test_source_items(monkeypatch):
 @pytest.mark.parametrize('reverse', (1, -1))
 def test_source_items_prevent_overriding_subsections_with_values(reverse):
     sources = [
-        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.DictSource({'x': 6, 'b': 5})
+        DictSource({'a': 1, 'b': {'c': 2}}),
+        DictSource({'x': 6, 'b': 5})
     ]
-    config = mvp.LayeredConfig(*sources[::reverse])
+    config = LayeredConfig(*sources[::reverse])
 
     with pytest.raises(ValueError) as exc_info:
         list(config.items())
@@ -182,16 +184,16 @@ def test_source_items_with_strategies_and_untyped_source(monkeypatch):
         a=1000
     """))
 
-    config = mvp.LayeredConfig(
-        mvp.Environment('MVP_'),  # last source still needs a typed source
-        mvp.DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
-        mvp.DictSource({'a': 10, 'x': [50, 60], 'b': {'c': 20, 'd': [30, 40]}}),
-        mvp.INIFile(untyped_source),
+    config = LayeredConfig(
+        Environment('MVP_'),  # last source still needs a typed source
+        DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
+        DictSource({'a': 10, 'x': [50, 60], 'b': {'c': 20, 'd': [30, 40]}}),
+        INIFile(untyped_source),
         strategies={
-            'a': mvp.add,
-            'x': mvp.collect,  # keep lists intact
-            'c': mvp.collect,  # collect values into list
-            'd': mvp.merge,    # merge lists
+            'a': strategy.add,
+            'x': strategy.collect,  # keep lists intact
+            'c': strategy.collect,  # collect values into list
+            'd': strategy.merge,    # merge lists
         }
     )
 
@@ -206,19 +208,19 @@ def test_source_items_with_strategies_and_untyped_source(monkeypatch):
 
 
 def test_layered_dump():
-    config = mvp.LayeredConfig(
-        mvp.DictSource({'a': 1, 'b': {'c': 2}}),
-        mvp.DictSource({'a': '10'}),
-        mvp.DictSource({'x': 6, 'b': {'y': 7}})
+    config = LayeredConfig(
+        DictSource({'a': 1, 'b': {'c': 2}}),
+        DictSource({'a': '10'}),
+        DictSource({'x': 6, 'b': {'y': 7}})
     )
 
     assert config.dump() == {'a': '10', 'b': {'c': 2, 'y': 7}, 'x': 6}
 
 
 def test_layered_setdefault():
-    source1 = mvp.DictSource({'a': 1, 'b': {'c': 2}})
-    source2 = mvp.DictSource({'x': 6, 'b': {'y': 7}})
-    config = mvp.LayeredConfig(source1, source2)
+    source1 = DictSource({'a': 1, 'b': {'c': 2}})
+    source2 = DictSource({'x': 6, 'b': {'y': 7}})
+    config = LayeredConfig(source1, source2)
 
     assert config.setdefault('a', 10) == 1
     assert config.setdefault('nonexisting', 10) == 10
@@ -231,12 +233,12 @@ def test_layered_setdefault():
 
 
 @pytest.mark.parametrize('container', [
-    dict, mvp.DictSource
+    dict, DictSource
 ])
 def test_layered_simple_update(container):
-    source1 = mvp.DictSource({'a': 1, 'b': {'c': 2}})
-    source2 = mvp.DictSource({'x': 6, 'b': {'y': 7}})
-    config = mvp.LayeredConfig(source1, source2)
+    source1 = DictSource({'a': 1, 'b': {'c': 2}})
+    source2 = DictSource({'x': 6, 'b': {'y': 7}})
+    config = LayeredConfig(source1, source2)
 
     data1 = container({'a': 10, 'x': 60})
     data2 = container({'c': 20})
@@ -276,11 +278,11 @@ def test_layered_config_with_untyped_source():
         [b.d]
         e=30
     """))
-    typed1 = mvp.DictSource(typed_source1)
-    typed2 = mvp.DictSource(typed_source2)
-    untyped1 = mvp.INIFile(untyped_source1)
-    untyped2 = mvp.INIFile(untyped_source2, subsection_token='.')
-    config = mvp.LayeredConfig(typed1, typed2, untyped1, untyped2)
+    typed1 = DictSource(typed_source1)
+    typed2 = DictSource(typed_source2)
+    untyped1 = INIFile(untyped_source1)
+    untyped2 = INIFile(untyped_source2, subsection_token='.')
+    config = LayeredConfig(typed1, typed2, untyped1, untyped2)
 
     assert typed1.x == 5
     assert typed1.b.y == 6
@@ -304,14 +306,14 @@ def test_layered_config_with_untyped_source():
 
 
 def test_read_layered_sources_with_strategies():
-    config = mvp.LayeredConfig(
-        mvp.DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
-        mvp.DictSource({'a': 10, 'x': [50, 60], 'b': {'c': 20, 'd': [30, 40]}}),
+    config = LayeredConfig(
+        DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
+        DictSource({'a': 10, 'x': [50, 60], 'b': {'c': 20, 'd': [30, 40]}}),
         strategies={
-            'a': mvp.add,
-            'x': mvp.collect,  # keep lists intact
-            'c': mvp.collect,  # collect values into list
-            'd': mvp.merge,    # merge lists
+            'a': strategy.add,
+            'x': strategy.collect,  # keep lists intact
+            'c': strategy.collect,  # collect values into list
+            'd': strategy.merge,    # merge lists
         }
     )
 
@@ -328,16 +330,16 @@ def test_read_layered_sources_with_strategies_and_untyped_sources(monkeypatch):
         a=1000
     """))
 
-    config = mvp.LayeredConfig(
-        mvp.Environment('MVP_'),  # last source still needs a typed source
-        mvp.DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
-        mvp.DictSource({'a': 10, 'x': [50, 60], 'b': {'c': 20, 'd': [30, 40]}}),
-        mvp.INIFile(untyped_source),
+    config = LayeredConfig(
+        Environment('MVP_'),  # last source still needs a typed source
+        DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
+        DictSource({'a': 10, 'x': [50, 60], 'b': {'c': 20, 'd': [30, 40]}}),
+        INIFile(untyped_source),
         strategies= {
-            'a': mvp.add,
-            'x': mvp.collect,  # keep lists intact
-            'c': mvp.collect,  # collect values into list
-            'd': mvp.merge,    # merge lists
+            'a': strategy.add,
+            'x': strategy.collect,  # keep lists intact
+            'c': strategy.collect,  # collect values into list
+            'd': strategy.merge,    # merge lists
         }
     )
 

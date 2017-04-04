@@ -5,6 +5,14 @@ import pytest
 import mvp
 
 
+def test_enforce_read_method():
+    with pytest.raises(NotImplementedError) as exc_info:
+        class MySource(mvp.Source):
+            pass
+
+    assert 'required "_read"' in str(exc_info.value)
+
+
 def test_read_dict_source():
     data = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
     config = mvp.DictSource(data)
@@ -28,11 +36,35 @@ def test_write_dict_source():
 
     config.a = 10
     config.b.c = 20
-    config.b.d.e = 30
+    del config.b.d.e
 
     assert config.a == 10
     assert config.b.c == 20
-    assert config.b.d == {'e': 30}
+    with pytest.raises(KeyError):
+        config.b.d.e
+
+
+def test_prevent_writing_to_readonly_source():
+    class ReadonlySource(mvp.Source):
+        def _read(self):
+            return {}
+
+    config = ReadonlySource()
+
+    with pytest.raises(TypeError) as exc_info:
+        config.a = 10
+
+    assert 'read-only source' in str(exc_info.value)
+
+
+def test_prevent_writing_to_locked_source():
+    data = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
+    config = DictSource(data, readonly=True)
+
+    with pytest.raises(TypeError) as exc_info:
+        config.a = 10
+
+    assert 'locked' in str(exc_info.value)
 
 
 def test_source_get():
@@ -89,3 +121,11 @@ def test_source_with_custom_types():
 
     assert config.dump() == data
     assert config.dump(with_custom_types=True) == {'a': '1', 'b': {'c': 4}}
+
+
+def test_save_hook():
+    config = DictSource({})
+    with pytest.raises(NotImplementedError) as exc_info:
+        config.save()
+
+    assert 'save method' in str(exc_info.value)

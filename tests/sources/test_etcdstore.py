@@ -4,6 +4,12 @@ import pytest
 
 import mvp
 
+try:
+    import requests
+except:
+    # skip all tests when yaml is not installed
+    pytestmark = pytest.mark.skip(reason='Missing optional dependencies')
+
 
 @pytest.fixture
 def connector():

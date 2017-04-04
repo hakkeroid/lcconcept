@@ -266,7 +266,7 @@ class SourceMeta(type):
 
     def __new__(self, name, bases, dct):
         if not '_read' in dct:
-            msg = '%s is missing to the required "_read" method' % name
+            msg = '%s is missing the required "_read" method' % name
             raise NotImplementedError(msg)
 
         dct['_meta'] = MetaInfo(
@@ -355,7 +355,8 @@ class Source(object):
         try:
             self._parent.save()
         except AttributeError:
-            pass
+            msg = '"%s" does not provide a save method'
+            raise NotImplementedError(msg % self._meta.source_name)
 
     def is_typed(self):
         return self._meta.is_typed

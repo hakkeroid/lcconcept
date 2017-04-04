@@ -118,6 +118,20 @@ def test_write_layered_source():
     assert source2.b.d.e == 80
 
 
+@pytest.mark.parametrize('key, message', (
+    ('a', 'locked'),
+    ('x', 'writable'),
+))
+def test_write_layered_source_fails(key, message):
+    source1 = DictSource({'a': 1, 'b': {'c': 2}}, readonly=True)
+    config = LayeredConfig(source1)
+
+    with pytest.raises(TypeError) as exc_info:
+        config[key] = 10
+
+    assert message in str(exc_info.value)
+
+
 def test_layered_get():
     config = mvp.LayeredConfig(
         mvp.DictSource({'a': 1, 'b': {'c': 2}}),

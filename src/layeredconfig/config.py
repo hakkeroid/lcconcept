@@ -30,8 +30,18 @@ class LayeredConfig(object):
 
     @property
     def _typed_sources(self):
+        def filter_by_type(source):
+            return source.is_typed()
+
+        for root_source, source in self._iter_sources(filter_by_type):
+            yield root_source, source
+
+    def _iter_sources(self, filter_fn=None):
+        if not filter_fn:
+            filter_fn = lambda s: s
+
         for source in reversed(self._source_list):
-            if not source.is_typed():
+            if not filter_fn(source):
                 continue
             traversed_source = source
             for key in self._keychain:
@@ -200,7 +210,7 @@ class LayeredConfig(object):
             writable_source = None
 
             for root_source, source in self._sources:
-                if writable_source is None and root_source._writable:
+                if writable_source is None and root_source.is_writable():
                     writable_source = source
 
                 if key in source:

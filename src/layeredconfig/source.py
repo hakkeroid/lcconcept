@@ -26,6 +26,14 @@ class SourceMeta(type):
 
     def __call__(cls, *args, **kwargs):
         instance = super(SourceMeta, cls).__call__(*args, **kwargs)
+
+        # if cls is not Source:
+            # bases = []
+            # if kwargs.get('cached', False):
+                # bases.append()
+
+            # update_bases(instance, bases)
+
         instance._initialized = True
         return instance
 
@@ -50,8 +58,18 @@ class Source(object):
         self._custom_types = kwargs.get('type_map', {})
         self._locked = kwargs.get('readonly', False)
 
-    @property
-    def _writable(self):
+        # will be applied to child classes as sublevel sources
+        # do not need caching.
+        self._use_cache = kwargs.get('cached', False)
+        self._cache = None
+
+    def write_cache(self):
+        try:
+            self._write(self._cache)
+        except NotImplementedError:
+            self._parent.write_cache()
+
+    def is_writable(self):
         return not self._meta.readonly and not self._locked
 
     def get(self, name, default=None):
@@ -68,23 +86,22 @@ class Source(object):
             return value
 
     def items(self):
-        return six.iteritems(self._read())
+        return six.iteritems(self._get_data())
 
     def update(self, *others):
         self._check_writable()
 
-        data = self._read()
+        data = self._get_data()
         for other in others:
             if isinstance(other, Source):
                 data.update(other.dump())
             else:
                 data.update(other)
-        self._write(data)
+        self._set_data(data)
 
     def dump(self, with_custom_types=False):
-        # really needed?
         if with_custom_types is False:
-            return self._read()
+            return self._get_data()
 
         def iter_dict(data):
             for key, value in data.items():
@@ -93,34 +110,51 @@ class Source(object):
                 else:
                     yield key, self._to_custom_type(key, value)
 
-        return dict(iter_dict(self._read()))
-
-    def save(self):
-        try:
-            self._parent.save()
-        except AttributeError:
-            msg = '"%s" does not provide a save method'
-            raise NotImplementedError(msg % self._meta.source_name)
+        return dict(iter_dict(self._get_data()))
 
     def is_typed(self):
         return self._meta.is_typed
 
     def _read(self):
-        return self._parent._read()[self._parent_key]
+        raise NotImplementedError
+
+    def _write(self, data):
+        raise NotImplementedError
+
+    def _get_data(self):
+        """Proxies the underlying data source
+
+        Using double underscores should prevent name clashes with
+        user defined keys.
+        """
+        if self._use_cache:
+            if not self._cache:
+                self._cache = self._read()
+            return self._cache
+
+        try:
+            return self._read()
+        except NotImplementedError:
+            return self._parent._get_data()[self._parent_key]
+
+    def _set_data(self, data):
+        self._check_writable()
+
+        if self._use_cache:
+            self._cache = data
+        else:
+            try:
+                self._write(data)
+            except NotImplementedError:
+                result = self._parent._get_data()
+                result[self._parent_key] = data
+                self._parent._set_data(result)
 
     def _check_writable(self):
         if self._meta.readonly:
             raise TypeError('%s is a read-only source' % self._meta.source_name)
         elif self._locked:
             raise TypeError('%s is locked and cannot be changed' % self._meta.source_name)
-
-    def _write(self, data):
-        self._check_writable()
-
-        result = self._parent._read()
-        result[self._parent_key] = data
-
-        self._parent._write(result)
 
     def _to_custom_type(self, key, value):
         converter = self._custom_types.get(key)
@@ -140,7 +174,7 @@ class Source(object):
         self[attr] = value
 
     def __getitem__(self, key):
-        attr = self._read()[key]
+        attr = self._get_data()[key]
         if isinstance(attr, dict):
             return Source(parent=(self, key),
                           meta=self._meta,
@@ -158,9 +192,9 @@ class Source(object):
         else:
             self._check_writable()
 
-            data = self._read()
+            data = self._get_data()
             data[key] = self._to_original_type(key, value)
-            self._write(data)
+            self._set_data(data)
 
     def __delattr__(self, name):
         del self[name]
@@ -168,18 +202,18 @@ class Source(object):
     def __delitem__(self, key):
         self._check_writable()
 
-        data = self._read()
+        data = self._get_data()
         del data[key]
-        self._write(data)
+        self._set_data(data)
 
     def __len__(self):
-        return len(self._read().keys())
+        return len(self._get_data().keys())
 
     def __iter__(self):
-        return iter(self._read().keys())
+        return iter(self._get_data().keys())
 
     def __eq__(self, other):
-        return self._read() == other
+        return self._get_data() == other
 
     def __repr__(self):
-        return repr(self._read())
+        return repr(self._get_data())

@@ -19,27 +19,20 @@ class EtcdStore(source.Source):
 
     _DEFAULT_URL = "http://127.0.0.1:2379/v2"
 
-    def __init__(self, url, use_cache=True, **kwargs):
+    def __init__(self, url, **kwargs):
         super(EtcdStore, self).__init__(**kwargs)
 
-        self._use_cache = use_cache
         self._connector = EtcdConnector(url or self._DEFAULT_URL)
-        self._cache = None
-
-    def save(self):
-        items = self._translate_dict_to_key_value_pairs(self._cache)
-        self._connector.set(*items)
 
     def _read(self):
-        if self._use_cache is False or not self._cache:
-            # getting a single value is broken
-            response = self._connector.get('/', recursive=True)
-            payload = self._get_payload_from_response(response)
-            self._cache = self._translate_payload_to_dict(payload)
-        return self._cache
+        # getting a single value is broken
+        response = self._connector.get('/', recursive=True)
+        payload = self._get_payload_from_response(response)
+        return self._translate_payload_to_dict(payload)
 
     def _write(self, data):
-        self._cache = data
+        items = self._translate_dict_to_key_value_pairs(data)
+        self._connector.set(*items)
 
     def _translate_dict_to_key_value_pairs(self, data, root=None):
         for key, value in data.items():

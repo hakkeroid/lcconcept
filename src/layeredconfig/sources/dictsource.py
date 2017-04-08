@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import copy
+
 from layeredconfig import source
 
 
@@ -11,7 +13,9 @@ class DictSource(source.Source):
         self._data = data or {}
 
     def _read(self):
-        return self._data
+        # use deepcopy to prevent uncontrolled changes
+        # to self._data from outside of this class
+        return copy.deepcopy(self._data)
 
     def _write(self, data):
         self._data = data

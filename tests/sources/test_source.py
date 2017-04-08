@@ -26,6 +26,15 @@ def test_read_dict_source():
     assert config['b'].c == 2
     assert config.b['d'] == {'e': 3}
 
+    # test lazy read
+    data['a'] = 10
+    data['b']['c'] = 20
+    data['b']['d']['e'] = 30
+
+    assert config.a == 10
+    assert config.b.c == 20
+    assert config.b.d == {'e': 30}
+
 
 def test_write_dict_source():
     data = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
@@ -124,9 +133,35 @@ def test_source_with_custom_types():
     assert config.dump(with_custom_types=True) == {'a': '1', 'b': {'c': 4}}
 
 
-def test_save_hook():
-    config = DictSource({})
-    with pytest.raises(NotImplementedError) as exc_info:
-        config.save()
+def test_read_cached_dict_source():
+    data = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
+    config = DictSource(data, cached=True)
 
-    assert 'save method' in str(exc_info.value)
+    assert config.a == 1
+    assert config.b.c == 2
+    assert config.b.d == {'e': 3}
+
+    # test cached access
+    data['a'] = 10
+    data['b']['c'] = 20
+    data['b']['d']['e'] = 30
+
+    assert config.a == 1
+    assert config.b.c == 2
+    assert config.b.d == {'e': 3}
+
+
+def test_write_cached_dict_source():
+    config = DictSource({}, cached=True)
+
+    config.a = 1
+    config.b = {}
+    config.b.c = 2
+    config.b.d = {}
+    config.b.d.e = 3
+
+    assert config._data == {}
+
+    config.write_cache()
+
+    assert config._data == {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}

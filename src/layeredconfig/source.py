@@ -12,7 +12,9 @@ class SourceMeta(type):
     """Initialize subclasses and source base class"""
 
     def __new__(self, name, bases, dct):
-        if not '_read' in dct:
+        if all([not '_read' in dct,
+                name != 'Source',
+                not name.endswith('Mixin')]):
             msg = '%s is missing the required "_read" method' % name
             raise NotImplementedError(msg)
 
@@ -26,20 +28,12 @@ class SourceMeta(type):
 
     def __call__(cls, *args, **kwargs):
         instance = super(SourceMeta, cls).__call__(*args, **kwargs)
-
-        # if cls is not Source:
-            # bases = []
-            # if kwargs.get('cached', False):
-                # bases.append()
-
-            # update_bases(instance, bases)
-
         instance._initialized = True
         return instance
 
 
 @six.add_metaclass(SourceMeta)
-class Source(object):
+class AbstractSource(object):
     """Source object"""
 
     _initialized = False
@@ -54,23 +48,8 @@ class Source(object):
         if 'meta' in kwargs:
             self._meta = kwargs['meta']
 
-        # user additions
-        self._custom_types = kwargs.get('type_map', {})
-        self._locked = kwargs.get('readonly', False)
-
-        # will be applied to child classes as sublevel sources
-        # do not need caching.
-        self._use_cache = kwargs.get('cached', False)
-        self._cache = None
-
-    def write_cache(self):
-        try:
-            self._write(self._cache)
-        except NotImplementedError:
-            self._parent.write_cache()
-
     def is_writable(self):
-        return not self._meta.readonly and not self._locked
+        return not self._meta.readonly
 
     def get(self, name, default=None):
         try:
@@ -99,18 +78,8 @@ class Source(object):
                 data.update(other)
         self._set_data(data)
 
-    def dump(self, with_custom_types=False):
-        if with_custom_types is False:
-            return self._get_data()
-
-        def iter_dict(data):
-            for key, value in data.items():
-                if isinstance(value, dict):
-                    yield key, dict(iter_dict(value))
-                else:
-                    yield key, self._to_custom_type(key, value)
-
-        return dict(iter_dict(self._get_data()))
+    def dump(self):
+        return self._get_data()
 
     def is_typed(self):
         return self._meta.is_typed
@@ -127,11 +96,6 @@ class Source(object):
         Using double underscores should prevent name clashes with
         user defined keys.
         """
-        if self._use_cache:
-            if not self._cache:
-                self._cache = self._read()
-            return self._cache
-
         try:
             return self._read()
         except NotImplementedError:
@@ -140,29 +104,16 @@ class Source(object):
     def _set_data(self, data):
         self._check_writable()
 
-        if self._use_cache:
-            self._cache = data
-        else:
-            try:
-                self._write(data)
-            except NotImplementedError:
-                result = self._parent._get_data()
-                result[self._parent_key] = data
-                self._parent._set_data(result)
+        try:
+            self._write(data)
+        except NotImplementedError:
+            result = self._parent._get_data()
+            result[self._parent_key] = data
+            self._parent._set_data(result)
 
     def _check_writable(self):
         if self._meta.readonly:
             raise TypeError('%s is a read-only source' % self._meta.source_name)
-        elif self._locked:
-            raise TypeError('%s is locked and cannot be changed' % self._meta.source_name)
-
-    def _to_custom_type(self, key, value):
-        converter = self._custom_types.get(key)
-        return converter.customize(value) if converter else value
-
-    def _to_original_type(self, key, value):
-        converter = self._custom_types.get(key)
-        return converter.customize(value) if converter else value
 
     def __getattr__(self, name):
         # although the key was accessed with attribute style
@@ -178,22 +129,20 @@ class Source(object):
         if isinstance(attr, dict):
             return Source(parent=(self, key),
                           meta=self._meta,
-                          type_map=self._custom_types
                           )
-
-        return self._to_custom_type(key, attr)
+        return attr
 
     def __setitem__(self, key, value):
         if any([self._initialized is False,
                 key == '_initialized',
                 key in self.__dict__,
                 key in self.__class__.__dict__]):
-            super(Source, self).__setattr__(key, value)
+            super(AbstractSource, self).__setattr__(key, value)
         else:
             self._check_writable()
 
             data = self._get_data()
-            data[key] = self._to_original_type(key, value)
+            data[key] = value
             self._set_data(data)
 
     def __delattr__(self, name):
@@ -217,3 +166,108 @@ class Source(object):
 
     def __repr__(self):
         return repr(self._get_data())
+
+
+class LockedSourceMixin(AbstractSource):
+
+    def __init__(self, *args, **kwargs):
+        # user additions
+        self._locked = kwargs.pop('readonly', False)
+
+        super(LockedSourceMixin, self).__init__(*args, **kwargs)
+
+    def is_writable(self):
+        is_writable = super(LockedSourceMixin, self).is_writable()
+        return is_writable and not self._locked
+
+    def _check_writable(self):
+        super(LockedSourceMixin, self)._check_writable()
+
+        if self._locked:
+            raise TypeError('%s is locked and cannot be changed' % self._meta.source_name)
+
+
+class CacheMixin(AbstractSource):
+
+    def __init__(self, *args, **kwargs):
+        # will be applied to child classes as sublevel sources
+        # do not need caching.
+        self._use_cache = kwargs.pop('cached', False)
+        self._cache = None
+
+        super(CacheMixin, self).__init__(*args, **kwargs)
+
+    def write_cache(self):
+        try:
+            self._write(self._cache)
+        except NotImplementedError:
+            self._parent.write_cache()
+
+    def _get_data(self):
+        if self._use_cache:
+            if not self._cache:
+                self._cache = self._read()
+            return self._cache
+
+        return super(CacheMixin, self)._get_data()
+
+    def _set_data(self, data):
+        self._check_writable()
+
+        if self._use_cache:
+            self._cache = data
+        else:
+            return super(CacheMixin, self)._set_data(data)
+
+
+class CustomTypeMixin(AbstractSource):
+
+    def __init__(self, *args, **kwargs):
+        # will be applied to child classes as sublevel sources
+        # do not need caching.
+        self._custom_types = kwargs.pop('type_map', {})
+
+        super(CustomTypeMixin, self).__init__(*args, **kwargs)
+
+    def dump(self, with_custom_types=False):
+        if with_custom_types is False:
+            return super(CustomTypeMixin, self).dump()
+
+        def iter_dict(data):
+            for key, value in data.items():
+                if isinstance(value, dict):
+                    yield key, dict(iter_dict(value))
+                else:
+                    yield key, self._to_custom_type(key, value)
+
+        return dict(iter_dict(self._get_data()))
+
+    def _to_custom_type(self, key, value):
+        converter = self._custom_types.get(key)
+        return converter.customize(value) if converter else value
+
+    def _to_original_type(self, key, value):
+        converter = self._custom_types[key]
+        return converter.reset(value) if converter else value
+
+    def __getitem__(self, key):
+        attr = super(CustomTypeMixin, self).__getitem__(key)
+        if isinstance(attr, Source):
+            attr._custom_types = self._custom_types
+            return attr
+
+        return self._to_custom_type(key, attr)
+
+    def __setitem__(self, key, value):
+        if self._initialized:
+            if key in self._custom_types:
+                value = self._to_original_type(key, value)
+        super(CustomTypeMixin, self).__setitem__(key, value)
+
+
+class Source(CacheMixin,
+             CustomTypeMixin,
+             LockedSourceMixin,
+             AbstractSource
+             ):
+    """Source class with all features enabled"""

@@ -118,7 +118,7 @@ def test_source_update(container):
     assert config == expected
 
 
-def test_source_with_custom_types():
+def test_read_source_with_custom_types():
     data = {'a': 1, 'b': {'c': 2}}
     types = {
         'a': CustomType(customize=str, reset=int),
@@ -131,6 +131,20 @@ def test_source_with_custom_types():
 
     assert config.dump() == data
     assert config.dump(with_custom_types=True) == {'a': '1', 'b': {'c': 4}}
+
+
+def test_write_source_with_custom_types():
+    data = {'a': 1, 'b': {'c': 2}}
+    types = {
+        'a': CustomType(customize=str, reset=int),
+        'c': CustomType(lambda v: 2*v, lambda v: v/2)
+    }
+    config = DictSource(data, type_map=types)
+
+    config.a = '1'
+    config.b.c = 4
+
+    assert config._data == data
 
 
 def test_read_cached_dict_source():

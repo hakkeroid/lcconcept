@@ -20,6 +20,9 @@ class EtcdStore(source.Source):
     _DEFAULT_URL = "http://127.0.0.1:2379/v2"
 
     def __init__(self, url, **kwargs):
+        # enable caching by default
+        kwargs['cached'] = kwargs.get('cached', True)
+
         super(EtcdStore, self).__init__(**kwargs)
 
         self._connector = EtcdConnector(url or self._DEFAULT_URL)

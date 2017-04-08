@@ -112,7 +112,7 @@ def test_write_etcd_source(connector):
     config.a = '10'
     config.b.c = '20'
     config.b.d.e = '30'
-    config.save()
+    config.write_cache()
 
     data = connector.set_data
     assert data['/a'] == '10'

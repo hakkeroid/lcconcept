@@ -198,6 +198,8 @@ class CacheMixin(AbstractSource):
         super(CacheMixin, self).__init__(*args, **kwargs)
 
     def write_cache(self):
+        self._check_writable()
+
         try:
             self._write(self._cache)
         except NotImplementedError:

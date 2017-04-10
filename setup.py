@@ -5,15 +5,8 @@ import sys
 
 from setuptools import setup, find_packages
 
-requirements = [
+REQUIREMENTS = [
     'six',
-]
-
-if sys.version_info < (2, 7, 0):
-    requirements.append('ordereddict >= 1.1')
-
-test_requirements = [
-    # TODO: put package test requirements here
 ]
 
 
@@ -30,7 +23,7 @@ setup(
     zip_safe=False,
     keywords='configuration',
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: BSD License',
         'Natural Language :: English',
@@ -41,8 +34,9 @@ setup(
         'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        'Topic :: Software Development :: Libraries',
     ],
 
-    install_requires=requirements,
-    tests_require=test_requirements
+    install_requires=REQUIREMENTS,
 )

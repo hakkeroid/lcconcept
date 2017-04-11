@@ -15,9 +15,11 @@ EXTRA_REQUIREMENTS = {
 }
 
 setup(
-    name='lcconcept',
-    version='0.0.0',
-    description='Manages configuration coming from config files, environment variables, command line arguments, code defaults or other sources',
+    name='layeredconfig',
+    version='0.1.0',
+    description='Aggregates multiple configuration sources into one'
+                ' configuration object with dot-notation or'
+                ' dictionary-like access.',
     author='Philipp Busch',
     author_email='hakkeroid@philippbusch.de',
     packages=find_packages(where='src'),
@@ -25,7 +27,7 @@ setup(
     include_package_data=True,
     license="BSD",
     zip_safe=False,
-    keywords='configuration',
+    keywords='layered multi configs configuration layeredconfig',
     classifiers=[
         'Development Status :: 1 - Planning',
         'Intended Audience :: Developers',
@@ -41,7 +43,6 @@ setup(
         'Programming Language :: Python :: 3.6',
         'Topic :: Software Development :: Libraries',
     ],
-
     install_requires=REQUIREMENTS,
     extras_require=EXTRA_REQUIREMENTS
 )

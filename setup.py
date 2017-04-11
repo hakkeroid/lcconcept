@@ -11,7 +11,7 @@ REQUIREMENTS = [
 
 
 setup(
-    name='mvp',
+    name='lcconcept',
     version='0.0.0',
     description='Manages configuration coming from config files, environment variables, command line arguments, code defaults or other sources',
     author='Philipp Busch',
@@ -23,7 +23,7 @@ setup(
     zip_safe=False,
     keywords='configuration',
     classifiers=[
-        'Development Status :: 4 - Beta',
+        'Development Status :: 1 - Planning',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: BSD License',
         'Natural Language :: English',

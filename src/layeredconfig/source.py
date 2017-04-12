@@ -122,7 +122,13 @@ class AbstractSource(object):
         return self[name]
 
     def __setattr__(self, attr, value):
-        self[attr] = value
+        if any([self._initialized is False,
+                attr == '_initialized',
+                attr in self.__dict__,
+                attr in self.__class__.__dict__]):
+            super(AbstractSource, self).__setattr__(attr, value)
+        else:
+            self[attr] = value
 
     def __getitem__(self, key):
         attr = self._get_data()[key]
@@ -133,17 +139,11 @@ class AbstractSource(object):
         return attr
 
     def __setitem__(self, key, value):
-        if any([self._initialized is False,
-                key == '_initialized',
-                key in self.__dict__,
-                key in self.__class__.__dict__]):
-            super(AbstractSource, self).__setattr__(key, value)
-        else:
-            self._check_writable()
+        self._check_writable()
 
-            data = self._get_data()
-            data[key] = value
-            self._set_data(data)
+        data = self._get_data()
+        data[key] = value
+        self._set_data(data)
 
     def __delattr__(self, name):
         del self[name]
@@ -261,9 +261,8 @@ class CustomTypeMixin(AbstractSource):
         return self._to_custom_type(key, attr)
 
     def __setitem__(self, key, value):
-        if self._initialized:
-            if key in self._custom_types:
-                value = self._to_original_type(key, value)
+        if key in self._custom_types:
+            value = self._to_original_type(key, value)
         super(CustomTypeMixin, self).__setitem__(key, value)
 
 

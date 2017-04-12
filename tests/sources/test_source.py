@@ -76,6 +76,11 @@ def test_prevent_writing_to_locked_source():
 
     assert 'locked' in str(exc_info.value)
 
+    with pytest.raises(TypeError) as exc_info:
+        config.b.c = 20
+
+    assert 'locked' in str(exc_info.value)
+
 
 def test_source_get():
     config = DictSource({'a': 1})

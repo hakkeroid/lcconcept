@@ -171,7 +171,6 @@ class AbstractSource(object):
 class LockedSourceMixin(AbstractSource):
 
     def __init__(self, *args, **kwargs):
-        # user additions
         self._locked = kwargs.pop('readonly', False)
 
         super(LockedSourceMixin, self).__init__(*args, **kwargs)
@@ -190,8 +189,8 @@ class LockedSourceMixin(AbstractSource):
 class CacheMixin(AbstractSource):
 
     def __init__(self, *args, **kwargs):
-        # will be applied to child classes as sublevel sources
-        # do not need caching.
+        # will be applied to top level source classes only as nested
+        # sublevels which are also Source instances do not need caching.
         self._use_cache = kwargs.pop('cached', False)
         self._cache = None
 
@@ -232,8 +231,10 @@ class CustomTypeMixin(AbstractSource):
         super(CustomTypeMixin, self).__init__(*args, **kwargs)
 
     def dump(self, with_custom_types=False):
+        dumped = super(CustomTypeMixin, self).dump()
+
         if with_custom_types is False:
-            return super(CustomTypeMixin, self).dump()
+            return dumped
 
         def iter_dict(data):
             for key, value in data.items():
@@ -242,7 +243,7 @@ class CustomTypeMixin(AbstractSource):
                 else:
                     yield key, self._to_custom_type(key, value)
 
-        return dict(iter_dict(self._get_data()))
+        return dict(iter_dict(dumped))
 
     def _to_custom_type(self, key, value):
         converter = self._custom_types.get(key)

@@ -9,6 +9,10 @@ REQUIREMENTS = [
     'six',
 ]
 
+EXTRA_REQUIREMENTS = {
+    'yaml': ['pyyaml'],
+    'etcd': ['requests'],
+}
 
 setup(
     name='lcconcept',
@@ -39,4 +43,5 @@ setup(
     ],
 
     install_requires=REQUIREMENTS,
+    extras_require=EXTRA_REQUIREMENTS
 )

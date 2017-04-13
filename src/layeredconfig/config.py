@@ -147,6 +147,8 @@ class LayeredConfig(object):
         return type(value)
 
     def _convert_value_to_type(self, value, type_info):
+        if issubclass(type_info, list):
+            return value.split(',')
         return type_info(value)
 
     def _make_subconfig(self, sources, key):

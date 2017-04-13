@@ -305,6 +305,45 @@ def test_layered_config_with_untyped_source():
     assert config.b.d.e == '30'
 
 
+def test_layered_config_for_all_type_conversions():
+    typed_source1 = {
+        'a': 1,
+        # 'b': 2L,
+        'c': 3.0,
+        'd': 4+5j,
+        'e': 'some string',
+        'f': u'some unicode',
+        'g': [1, 2],
+        'h': (1, 2),
+        'i': set([1, 2]),
+    }
+    untyped_source1 = io.StringIO(pytest.helpers.unindent(u"""
+        [__root__]
+        a=10
+        b=20L
+        c=30.01
+        d=5+6j
+        e=some other string
+        f=some other unicode
+        g=3,4
+        h=(3,4)
+        i={3, 4}
+    """))
+    typed1 = DictSource(typed_source1)
+    untyped1 = INIFile(untyped_source1)
+    config = LayeredConfig(typed1, untyped1)
+
+    assert config.a == 10
+    # assert config.b == 20L
+    assert config.c == 30.01
+    assert config.d == 5+6j
+    assert config.e == 'some other string'
+    assert config.f == u'some other unicode'
+    # assert config.g == [3, 4]
+    # assert config.h == (3, 4)
+    # assert config.i == {3, 4}
+
+
 def test_read_layered_sources_with_strategies():
     config = LayeredConfig(
         DictSource({'a': 1, 'x': [5, 6], 'b': {'c': 2, 'd': [3, 4]}}),
